@@ -1,0 +1,1090 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BENCH — Local Model Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.2/dist/ort.min.js"></script>
+<style>
+  :root{
+    --bg:#12151A;
+    --surface:#181C23;
+    --surface-raised:#20252E;
+    --border:#2A303B;
+    --border-soft:#232833;
+    --text:#E9EAEC;
+    --muted:#8B93A3;
+    --muted-dim:#5C6472;
+    --accent:#E3A857;
+    --accent-dim:#7A6640;
+    --accent-glow:rgba(227,168,87,0.18);
+    --good:#6FCF97;
+    --bad:#E36F6F;
+    --radius:3px;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:'IBM Plex Sans',sans-serif;
+    font-size:14px;
+    display:flex;
+    height:100vh;
+    overflow:hidden;
+  }
+  ::-webkit-scrollbar{width:8px;height:8px;}
+  ::-webkit-scrollbar-track{background:transparent;}
+  ::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px;}
+  ::-webkit-scrollbar-thumb:hover{background:var(--muted-dim);}
+
+  a{color:var(--accent);}
+  button{font-family:inherit;cursor:pointer;}
+  input,select,textarea{font-family:inherit;color:var(--text);}
+
+  /* ---------- Layout shell ---------- */
+  #app{display:flex;width:100%;height:100%;}
+  #sidebar{
+    width:320px;min-width:320px;
+    background:var(--surface);
+    border-right:1px solid var(--border);
+    display:flex;flex-direction:column;
+    overflow-y:auto;
+  }
+  #main{flex:1;display:flex;flex-direction:column;min-width:0;}
+
+  /* ---------- Sidebar ---------- */
+  .brand{
+    padding:20px 18px 16px;
+    border-bottom:1px solid var(--border-soft);
+  }
+  .brand .mark{
+    font-family:'Space Grotesk',sans-serif;
+    font-weight:700;
+    font-size:20px;
+    letter-spacing:0.04em;
+    color:var(--text);
+  }
+  .brand .mark span{color:var(--accent);}
+  .brand .sub{
+    margin-top:4px;
+    font-family:'IBM Plex Mono',monospace;
+    font-size:11px;
+    color:var(--muted);
+    letter-spacing:0.03em;
+  }
+
+  .panel{border-bottom:1px solid var(--border-soft);}
+  .panel-head{
+    padding:12px 18px;
+    display:flex;align-items:center;justify-content:space-between;
+    cursor:pointer;
+    user-select:none;
+  }
+  .panel-head h3{
+    margin:0;
+    font-family:'Space Grotesk',sans-serif;
+    font-size:12px;
+    font-weight:600;
+    letter-spacing:0.08em;
+    text-transform:uppercase;
+    color:var(--muted);
+  }
+  .panel-head .chev{color:var(--muted-dim);font-size:11px;transition:transform .15s;}
+  .panel.collapsed .chev{transform:rotate(-90deg);}
+  .panel-body{padding:0 18px 16px;display:flex;flex-direction:column;gap:10px;}
+  .panel.collapsed .panel-body{display:none;}
+
+  .field{display:flex;flex-direction:column;gap:4px;}
+  .field label{
+    font-size:11px;color:var(--muted);
+    font-family:'IBM Plex Mono',monospace;
+  }
+  .field .hint{font-size:10.5px;color:var(--muted-dim);line-height:1.4;}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+
+  input[type=text],input[type=number],select,textarea{
+    background:var(--surface-raised);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    padding:7px 9px;
+    font-size:12.5px;
+    outline:none;
+  }
+  input[type=text]:focus,input[type=number]:focus,select:focus,textarea:focus{
+    border-color:var(--accent-dim);
+    box-shadow:0 0 0 2px var(--accent-glow);
+  }
+  input[type=range]{width:100%;accent-color:var(--accent);}
+
+  .filebtn{
+    display:flex;align-items:center;gap:8px;
+    background:var(--surface-raised);
+    border:1px dashed var(--border);
+    border-radius:var(--radius);
+    padding:9px;
+    font-size:12px;color:var(--muted);
+  }
+  .filebtn.loaded{border-style:solid;border-color:var(--good);color:var(--text);}
+  .filebtn input{display:none;}
+  .filebtn .status-dot{
+    width:6px;height:6px;border-radius:50%;
+    background:var(--muted-dim);flex-shrink:0;
+  }
+  .filebtn.loaded .status-dot{background:var(--good);}
+
+  .btn{
+    background:var(--accent);
+    color:#1A140A;
+    border:none;
+    border-radius:var(--radius);
+    padding:9px 14px;
+    font-weight:600;
+    font-size:12.5px;
+    letter-spacing:0.02em;
+    transition:filter .12s;
+  }
+  .btn:hover{filter:brightness(1.08);}
+  .btn:disabled{background:var(--border);color:var(--muted-dim);cursor:not-allowed;}
+  .btn.secondary{
+    background:transparent;border:1px solid var(--border);color:var(--muted);
+  }
+  .btn.secondary:hover{border-color:var(--muted-dim);color:var(--text);}
+  .btn.danger{background:var(--bad);color:#2A0E0E;}
+
+  .toggle-row{display:flex;align-items:center;justify-content:space-between;}
+  .toggle-row label{font-size:11px;color:var(--muted);font-family:'IBM Plex Mono',monospace;}
+
+  /* ---------- Main / chat header ---------- */
+  #chat-header{
+    padding:14px 24px;
+    border-bottom:1px solid var(--border);
+    display:flex;align-items:center;justify-content:space-between;
+    background:var(--surface);
+    flex-shrink:0;
+  }
+  #chat-header .agent{
+    display:flex;align-items:center;gap:10px;
+  }
+  #chat-header .agent-name{
+    font-family:'Space Grotesk',sans-serif;
+    font-weight:600;font-size:14.5px;
+  }
+  .status-pill{
+    display:flex;align-items:center;gap:6px;
+    font-family:'IBM Plex Mono',monospace;
+    font-size:11px;color:var(--muted);
+    padding:4px 10px;border:1px solid var(--border);border-radius:20px;
+  }
+  .status-pill .dot{width:6px;height:6px;border-radius:50%;background:var(--muted-dim);}
+  .status-pill.ready .dot{background:var(--good);box-shadow:0 0 6px var(--good);}
+  .status-pill.busy .dot{background:var(--accent);box-shadow:0 0 6px var(--accent);animation:pulse 1s infinite;}
+  .status-pill.error .dot{background:var(--bad);}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.3;}}
+
+  #sidebar-toggle{display:none;}
+
+  /* ---------- Chat scroll area ---------- */
+  #chat-scroll{
+    flex:1;overflow-y:auto;
+    padding:24px;
+    display:flex;flex-direction:column;gap:16px;
+  }
+  .empty-state{
+    margin:auto;
+    max-width:420px;
+    text-align:center;
+    color:var(--muted);
+  }
+  .empty-state .glyph{
+    font-family:'Space Grotesk',sans-serif;
+    font-size:34px;font-weight:700;color:var(--border);
+    margin-bottom:14px;
+  }
+  .empty-state h4{
+    font-family:'Space Grotesk',sans-serif;
+    color:var(--text);font-size:15px;margin:0 0 8px;
+  }
+  .empty-state p{font-size:12.5px;line-height:1.6;margin:0;}
+  .empty-state ol{
+    text-align:left;font-size:12px;color:var(--muted);
+    line-height:1.9;margin:14px 0 0;padding-left:18px;
+  }
+
+  .msg{max-width:78%;display:flex;flex-direction:column;gap:4px;}
+  .msg.user{align-self:flex-end;align-items:flex-end;}
+  .msg.assistant{align-self:flex-start;align-items:flex-start;}
+  .msg .role{
+    font-family:'IBM Plex Mono',monospace;font-size:10px;
+    color:var(--muted-dim);letter-spacing:0.06em;text-transform:uppercase;
+  }
+  .msg .bubble{
+    padding:10px 14px;border-radius:10px;
+    font-size:13.5px;line-height:1.55;
+    white-space:pre-wrap;word-wrap:break-word;
+  }
+  .msg.user .bubble{background:var(--accent);color:#1A140A;border-bottom-right-radius:2px;}
+  .msg.assistant .bubble{background:var(--surface-raised);border:1px solid var(--border-soft);border-bottom-left-radius:2px;}
+  .msg.assistant .bubble.streaming::after{
+    content:'▍';color:var(--accent);animation:pulse .8s infinite;
+  }
+
+  /* ---------- Token pulse strip (signature element) ---------- */
+  #pulse-wrap{
+    border-top:1px solid var(--border);
+    background:var(--surface);
+    padding:8px 24px 4px;
+    flex-shrink:0;
+  }
+  #pulse-label{
+    font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--muted-dim);
+    letter-spacing:0.08em;text-transform:uppercase;margin-bottom:6px;
+  }
+  #pulse-strip{
+    display:flex;align-items:flex-end;gap:2px;height:34px;
+    overflow-x:auto;overflow-y:hidden;
+  }
+  .pulse-bar{
+    flex-shrink:0;width:5px;min-width:5px;
+    background:var(--accent-dim);
+    border-radius:1px 1px 0 0;
+    position:relative;
+    transition:height .1s;
+  }
+  .pulse-bar:hover{background:var(--accent);}
+  .pulse-bar:hover .pulse-tip{display:block;}
+  .pulse-tip{
+    display:none;position:absolute;bottom:100%;left:50%;
+    transform:translateX(-50%);margin-bottom:6px;
+    background:#000;border:1px solid var(--border);
+    padding:6px 8px;border-radius:4px;white-space:nowrap;
+    font-family:'IBM Plex Mono',monospace;font-size:10.5px;z-index:5;
+  }
+  .pulse-tip .t-row{display:flex;justify-content:space-between;gap:10px;color:var(--muted);}
+  .pulse-tip .t-row.top{color:var(--accent);}
+
+  /* ---------- Composer ---------- */
+  #composer{
+    padding:14px 24px 18px;
+    background:var(--surface);
+    flex-shrink:0;
+  }
+  #composer-inner{
+    display:flex;gap:10px;align-items:flex-end;
+    background:var(--surface-raised);
+    border:1px solid var(--border);
+    border-radius:8px;padding:8px 8px 8px 14px;
+  }
+  #composer-inner:focus-within{border-color:var(--accent-dim);box-shadow:0 0 0 2px var(--accent-glow);}
+  #composer textarea{
+    flex:1;border:none;background:transparent;resize:none;
+    outline:none;font-size:13.5px;line-height:1.5;
+    max-height:160px;padding:6px 0;
+  }
+  #composer-hint{
+    margin-top:6px;font-family:'IBM Plex Mono',monospace;
+    font-size:10.5px;color:var(--muted-dim);
+  }
+  #send-btn{width:36px;height:36px;padding:0;border-radius:6px;flex-shrink:0;
+    display:flex;align-items:center;justify-content:center;font-size:15px;}
+  #stop-btn{display:none;}
+
+  /* ---------- Responsive ---------- */
+  @media(max-width:820px){
+    #sidebar{
+      position:fixed;left:0;top:0;bottom:0;z-index:20;
+      transform:translateX(-100%);transition:transform .18s;
+      box-shadow:20px 0 40px rgba(0,0,0,0.4);
+    }
+    #sidebar.open{transform:translateX(0);}
+    #sidebar-toggle{
+      display:flex;align-items:center;justify-content:center;
+      width:32px;height:32px;background:transparent;border:1px solid var(--border);
+      border-radius:6px;color:var(--muted);margin-right:6px;
+    }
+    .msg{max-width:90%;}
+  }
+  @media(prefers-reduced-motion:reduce){
+    *{animation:none !important;transition:none !important;}
+  }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ============ SIDEBAR ============ -->
+  <aside id="sidebar">
+    <div class="brand">
+      <div class="mark">BENCH<span>_</span></div>
+      <div class="sub">local model console · agent: vocab-v1</div>
+    </div>
+
+    <!-- Model files -->
+    <div class="panel" data-panel>
+      <div class="panel-head" data-toggle><h3>Model files</h3><span class="chev">▾</span></div>
+      <div class="panel-body">
+        <div class="field">
+          <label>ONNX model (.onnx)</label>
+          <label class="filebtn" id="onnx-filebtn">
+            <span class="status-dot"></span>
+            <span id="onnx-filename">Choose model.onnx…</span>
+            <input type="file" id="onnx-input" accept=".onnx">
+          </label>
+        </div>
+        <div class="field">
+          <label>Tokenizer type</label>
+          <select id="tok-type">
+            <option value="bpe">Byte-level BPE (tokenizer.json)</option>
+            <option value="word">Word-level (vocab.json)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label id="tok-file-label">Tokenizer file</label>
+          <label class="filebtn" id="tok-filebtn">
+            <span class="status-dot"></span>
+            <span id="tok-filename">Choose tokenizer.json…</span>
+            <input type="file" id="tok-input" accept=".json">
+          </label>
+        </div>
+        <button class="btn" id="load-btn">Load model</button>
+        <div class="field-msg hint" id="load-msg" style="color:var(--muted);font-size:11px;"></div>
+
+        <div style="border-top:1px solid var(--border-soft);margin-top:4px;padding-top:12px;">
+          <div class="hint" style="margin-bottom:8px;">— or load directly from URL (e.g. files sitting next to this page on GitHub Pages) —</div>
+          <div class="field">
+            <label>Model URL</label>
+            <input type="text" id="url-onnx" value="./vocab_agent.onnx">
+          </div>
+          <div class="field">
+            <label>Tokenizer URL</label>
+            <input type="text" id="url-tok" value="./tokenizer.json">
+          </div>
+          <button class="btn secondary" id="fetch-url-btn" style="margin-top:4px;">Fetch &amp; load from URL</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- I/O config -->
+    <div class="panel collapsed" data-panel>
+      <div class="panel-head" data-toggle><h3>Graph I/O</h3><span class="chev">▾</span></div>
+      <div class="panel-body">
+        <div class="row2">
+          <div class="field"><label>Input tensor name</label><input type="text" id="cfg-input-name" value="input_ids"></div>
+          <div class="field"><label>Output tensor name</label><input type="text" id="cfg-output-name" value="logits"></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label>Input dtype</label>
+            <select id="cfg-dtype"><option value="int64">int64</option><option value="int32">int32</option></select>
+          </div>
+          <div class="field"><label>Context length</label><input type="number" id="cfg-ctx" value="256" min="8"></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label>BOS token id</label><input type="number" id="cfg-bos" placeholder="none"></div>
+          <div class="field"><label>EOS token id</label><input type="number" id="cfg-eos" placeholder="none"></div>
+        </div>
+        <div class="toggle-row">
+          <label>Send attention_mask input</label>
+          <input type="checkbox" id="cfg-attnmask">
+        </div>
+        <div class="toggle-row">
+          <label>Disable WASM SIMD (mobile compatibility)</label>
+          <input type="checkbox" id="cfg-nosimd">
+        </div>
+        <div class="hint">These must match how you exported the ONNX graph in Colab. If load or inference fails, check these first — the console panel below logs the exact error.</div>
+      </div>
+    </div>
+
+    <!-- Prompt template -->
+    <div class="panel collapsed" data-panel>
+      <div class="panel-head" data-toggle><h3>Prompt template</h3><span class="chev">▾</span></div>
+      <div class="panel-body">
+        <div class="field">
+          <label>System prompt</label>
+          <textarea id="cfg-system" rows="2" placeholder="optional"></textarea>
+        </div>
+        <div class="field">
+          <label>Template ({history} = formatted turns)</label>
+          <textarea id="cfg-template" rows="3">{system}
+{history}
+Assistant:</textarea>
+          <div class="hint">Only matters if your training data used a specific format — a from-scratch model has no built-in chat template, so this string is literally what gets tokenized.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Generation params -->
+    <div class="panel" data-panel>
+      <div class="panel-head" data-toggle><h3>Generation</h3><span class="chev">▾</span></div>
+      <div class="panel-body">
+        <div class="field">
+          <label>Max new tokens: <span id="v-maxtok">80</span></label>
+          <input type="range" id="cfg-maxtok" min="4" max="512" value="80">
+        </div>
+        <div class="field">
+          <label>Temperature: <span id="v-temp">0.8</span></label>
+          <input type="range" id="cfg-temp" min="0" max="2" step="0.05" value="0.8">
+        </div>
+        <div class="row2">
+          <div class="field"><label>Top-k: <span id="v-topk">40</span></label>
+            <input type="range" id="cfg-topk" min="0" max="200" value="40"></div>
+          <div class="field"><label>Top-p: <span id="v-topp">0.95</span></label>
+            <input type="range" id="cfg-topp" min="0" max="1" step="0.01" value="0.95"></div>
+        </div>
+        <div class="field">
+          <label>Repetition penalty: <span id="v-reppen">1.15</span></label>
+          <input type="range" id="cfg-reppen" min="1" max="2" step="0.01" value="1.15">
+        </div>
+      </div>
+    </div>
+
+    <!-- Console log -->
+    <div class="panel collapsed" data-panel>
+      <div class="panel-head" data-toggle><h3>Console</h3><span class="chev">▾</span></div>
+      <div class="panel-body">
+        <div id="console-log" style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--muted);line-height:1.6;max-height:180px;overflow-y:auto;white-space:pre-wrap;"></div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ============ MAIN ============ -->
+  <main id="main">
+    <div id="chat-header">
+      <div class="agent">
+        <button id="sidebar-toggle">☰</button>
+        <span class="agent-name">Vocab Agent</span>
+      </div>
+      <div class="status-pill" id="status-pill"><span class="dot"></span><span id="status-text">no model loaded</span></div>
+    </div>
+
+    <div id="chat-scroll">
+      <div class="empty-state" id="empty-state">
+        <div class="glyph">////</div>
+        <h4>Nothing loaded yet</h4>
+        <p>This console runs entirely in your browser against a model you trained and exported yourself.</p>
+        <ol>
+          <li>Load your <b>.onnx</b> file and tokenizer in the sidebar</li>
+          <li>Check the Graph I/O names match your export</li>
+          <li>Click <b>Load model</b> — the status dot turns green when ready</li>
+          <li>Chat below. Each token's confidence shows in the pulse strip</li>
+        </ol>
+      </div>
+    </div>
+
+    <div id="pulse-wrap">
+      <div id="pulse-label">token pulse — top candidate confidence</div>
+      <div id="pulse-strip"></div>
+    </div>
+
+    <div id="composer">
+      <div id="composer-inner">
+        <textarea id="composer-input" rows="1" placeholder="Message the vocab agent…" disabled></textarea>
+        <button class="btn" id="send-btn" disabled>↑</button>
+        <button class="btn danger" id="stop-btn">Stop</button>
+      </div>
+      <div id="composer-hint">Enter to send · Shift+Enter for newline · runs 100% locally in-browser</div>
+    </div>
+  </main>
+
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ================= Utility: console log =================
+  const logEl = document.getElementById('console-log');
+  function log(msg, isErr){
+    const line = document.createElement('div');
+    if(isErr) line.style.color = 'var(--bad)';
+    const t = new Date().toLocaleTimeString();
+    line.textContent = `[${t}] ${msg}`;
+    logEl.appendChild(line);
+    logEl.scrollTop = logEl.scrollHeight;
+    if(isErr) console.error(msg); else console.log(msg);
+  }
+
+  // ================= Panel collapse =================
+  document.querySelectorAll('[data-toggle]').forEach(head=>{
+    head.addEventListener('click', ()=> head.closest('[data-panel]').classList.toggle('collapsed'));
+  });
+  const sidebar = document.getElementById('sidebar');
+  document.getElementById('sidebar-toggle').addEventListener('click', ()=> sidebar.classList.toggle('open'));
+
+  // ================= Range value labels =================
+  const bindRange = (id, labelId, fmt) => {
+    const el = document.getElementById(id), lab = document.getElementById(labelId);
+    const update = () => lab.textContent = fmt ? fmt(el.value) : el.value;
+    el.addEventListener('input', update); update();
+  };
+  bindRange('cfg-maxtok','v-maxtok');
+  bindRange('cfg-temp','v-temp', v=>parseFloat(v).toFixed(2));
+  bindRange('cfg-topk','v-topk');
+  bindRange('cfg-topp','v-topp', v=>parseFloat(v).toFixed(2));
+  bindRange('cfg-reppen','v-reppen', v=>parseFloat(v).toFixed(2));
+
+  // ================= Tokenizer type toggling label =================
+  const tokType = document.getElementById('tok-type');
+  const tokFileLabel = document.getElementById('tok-file-label');
+  const tokFilename = document.getElementById('tok-filename');
+  tokType.addEventListener('change', ()=>{
+    if(tokType.value === 'bpe'){
+      tokFileLabel.textContent = 'Tokenizer file';
+      tokFilename.textContent = 'Choose tokenizer.json…';
+    } else {
+      tokFileLabel.textContent = 'Vocab file';
+      tokFilename.textContent = 'Choose vocab.json…';
+    }
+  });
+
+  // ================= File pickers =================
+  let onnxBuffer = null, onnxFileName = null;
+  let tokRaw = null, tokFileName = null;
+
+  document.getElementById('onnx-input').addEventListener('change', async (e)=>{
+    const f = e.target.files[0]; if(!f) return;
+    onnxFileName = f.name;
+    onnxBuffer = await f.arrayBuffer();
+    document.getElementById('onnx-filename').textContent = f.name;
+    document.getElementById('onnx-filebtn').classList.add('loaded');
+    log(`Read ${f.name} (${(onnxBuffer.byteLength/1e6).toFixed(2)} MB)`);
+  });
+
+  document.getElementById('tok-input').addEventListener('change', async (e)=>{
+    const f = e.target.files[0]; if(!f) return;
+    tokFileName = f.name;
+    const text = await f.text();
+    try{ tokRaw = JSON.parse(text); }
+    catch(err){ log('Tokenizer file is not valid JSON: '+err.message, true); return; }
+    document.getElementById('tok-filename').textContent = f.name;
+    document.getElementById('tok-filebtn').classList.add('loaded');
+    log(`Parsed tokenizer file ${f.name}`);
+  });
+
+  // ================= Byte-level BPE tokenizer =================
+  function buildByteMaps(){
+    const bs = [];
+    for(let i=33;i<=126;i++) bs.push(i);
+    for(let i=161;i<=172;i++) bs.push(i);
+    for(let i=174;i<=255;i++) bs.push(i);
+    const cs = bs.slice();
+    let n = 0;
+    for(let b=0;b<256;b++){
+      if(!bs.includes(b)){ bs.push(b); cs.push(256+n); n++; }
+    }
+    const byteToUnicode = {}, unicodeToByte = {};
+    for(let i=0;i<bs.length;i++){
+      const ch = String.fromCharCode(cs[i]);
+      byteToUnicode[bs[i]] = ch;
+      unicodeToByte[ch] = bs[i];
+    }
+    return {byteToUnicode, unicodeToByte};
+  }
+
+  const PRETOKENIZE_REGEX = /'s|'t|'re|'ve|'m|'ll|'d| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+/gu;
+
+  function getPairs(wordArr){
+    const pairs = new Set();
+    for(let i=0;i<wordArr.length-1;i++) pairs.add(wordArr[i]+'\u0001'+wordArr[i+1]);
+    return pairs;
+  }
+
+  class BPETokenizer{
+    constructor(tokJson){
+      const model = tokJson.model || tokJson;
+      const vocabObj = model.vocab || tokJson.vocab;
+      if(!vocabObj) throw new Error('tokenizer.json has no model.vocab');
+      this.vocab = new Map(Object.entries(vocabObj));
+      this.idToToken = new Map();
+      for(const [tok,id] of this.vocab.entries()) this.idToToken.set(id, tok);
+
+      const merges = model.merges || tokJson.merges || [];
+      this.bpeRanks = new Map();
+      merges.forEach((m,i)=>{
+        let a,b;
+        if(Array.isArray(m)) [a,b]=m; else [a,b]=String(m).split(' ');
+        this.bpeRanks.set(a+'\u0001'+b, i);
+      });
+
+      const maps = buildByteMaps();
+      this.byteToUnicode = maps.byteToUnicode;
+      this.unicodeToByte = maps.unicodeToByte;
+      this.cache = new Map();
+
+      // special / added tokens
+      this.unkId = null;
+      if(tokJson.added_tokens){
+        for(const t of tokJson.added_tokens){
+          if(t.special && /unk/i.test(t.content||'')) this.unkId = t.id;
+        }
+      }
+    }
+
+    bpe(token){
+      if(this.cache.has(token)) return this.cache.get(token);
+      let word = Array.from(token);
+      if(word.length<=1){ this.cache.set(token, word); return word; }
+      let pairs = getPairs(word);
+      while(pairs.size){
+        let minPair=null, minRank=Infinity;
+        for(const p of pairs){
+          const r = this.bpeRanks.get(p);
+          if(r!==undefined && r<minRank){ minRank=r; minPair=p; }
+        }
+        if(minPair===null) break;
+        const [first,second] = minPair.split('\u0001');
+        const newWord=[]; let i=0;
+        while(i<word.length){
+          const j = word.indexOf(first, i);
+          if(j===-1){ newWord.push(...word.slice(i)); break; }
+          newWord.push(...word.slice(i,j));
+          if(j<word.length-1 && word[j+1]===second){ newWord.push(first+second); i=j+2; }
+          else{ newWord.push(word[j]); i=j+1; }
+        }
+        word=newWord;
+        if(word.length===1) break;
+        pairs=getPairs(word);
+      }
+      this.cache.set(token, word);
+      return word;
+    }
+
+    encode(text){
+      const ids=[];
+      const chunks = text.match(PRETOKENIZE_REGEX) || [];
+      const enc = new TextEncoder();
+      for(const chunk of chunks){
+        const bytes = enc.encode(chunk);
+        let mapped='';
+        for(const b of bytes) mapped += this.byteToUnicode[b];
+        const bpeToks = this.bpe(mapped);
+        for(const t of bpeToks){
+          if(this.vocab.has(t)) ids.push(this.vocab.get(t));
+          else if(this.unkId!==null) ids.push(this.unkId);
+        }
+      }
+      return ids;
+    }
+
+    decodeToken(id){
+      const tok = this.idToToken.get(id);
+      if(tok===undefined) return '';
+      let bytes=[];
+      for(const ch of tok){
+        const b = this.unicodeToByte[ch];
+        if(b!==undefined) bytes.push(b);
+      }
+      return new TextDecoder('utf-8',{fatal:false}).decode(new Uint8Array(bytes));
+    }
+
+    decode(ids){
+      return ids.map(id=>this.decodeToken(id)).join('');
+    }
+  }
+
+  class WordTokenizer{
+    constructor(vocabJson){
+      this.vocab = new Map(Object.entries(vocabJson));
+      this.idToToken = new Map();
+      for(const [tok,id] of this.vocab.entries()) this.idToToken.set(id, tok);
+      this.unkId = this.vocab.has('<unk>') ? this.vocab.get('<unk>') : null;
+    }
+    encode(text){
+      const words = text.match(/\w+|[^\w\s]/g) || [];
+      const ids=[];
+      for(let w of words){
+        const key = this.vocab.has(w) ? w : w.toLowerCase();
+        if(this.vocab.has(key)) ids.push(this.vocab.get(key));
+        else if(this.unkId!==null) ids.push(this.unkId);
+      }
+      return ids;
+    }
+    decode(ids){
+      const toks = ids.map(id=>this.idToToken.get(id)).filter(t=>t!==undefined);
+      // light cleanup so punctuation doesn't float with a leading space
+      let out='';
+      for(const t of toks){
+        if(/^[.,!?;:'")\]]/.test(t) || out==='') out += t;
+        else out += ' ' + t;
+      }
+      return out;
+    }
+  }
+
+  // ================= Model state =================
+  let session = null;
+  let tokenizer = null;
+  let modelReady = false;
+  const statusPill = document.getElementById('status-pill');
+  const statusText = document.getElementById('status-text');
+  function setStatus(mode, text){
+    statusPill.className = 'status-pill ' + mode;
+    statusText.textContent = text;
+  }
+
+  document.getElementById('load-btn').addEventListener('click', loadModel);
+  const loadMsg = document.getElementById('load-msg');
+
+  document.getElementById('fetch-url-btn').addEventListener('click', async ()=>{
+    const onnxUrl = document.getElementById('url-onnx').value.trim();
+    const tokUrl = document.getElementById('url-tok').value.trim();
+    if(!onnxUrl || !tokUrl){ loadMsg.textContent = 'Enter both URLs first.'; loadMsg.style.color='var(--bad)'; return; }
+    loadMsg.textContent = 'Fetching…'; loadMsg.style.color='var(--muted)';
+    try{
+      log('Fetching model from '+onnxUrl);
+      const onnxRes = await fetch(onnxUrl);
+      if(!onnxRes.ok) throw new Error(`Model fetch failed: HTTP ${onnxRes.status} for ${onnxUrl}`);
+      onnxBuffer = await onnxRes.arrayBuffer();
+      onnxFileName = onnxUrl.split('/').pop();
+      document.getElementById('onnx-filename').textContent = onnxFileName;
+      document.getElementById('onnx-filebtn').classList.add('loaded');
+      log(`Fetched ${onnxFileName} (${(onnxBuffer.byteLength/1e6).toFixed(2)} MB)`);
+
+      log('Fetching tokenizer from '+tokUrl);
+      const tokRes = await fetch(tokUrl);
+      if(!tokRes.ok) throw new Error(`Tokenizer fetch failed: HTTP ${tokRes.status} for ${tokUrl}`);
+      tokRaw = await tokRes.json();
+      tokFileName = tokUrl.split('/').pop();
+      document.getElementById('tok-filename').textContent = tokFileName;
+      document.getElementById('tok-filebtn').classList.add('loaded');
+      log(`Fetched tokenizer ${tokFileName}`);
+
+      await loadModel();
+    }catch(err){
+      const detail = errorDetail(err);
+      log('URL fetch failed: '+detail, true);
+      loadMsg.textContent = 'Fetch failed: '+detail; loadMsg.style.color='var(--bad)';
+    }
+  });
+
+  async function loadModel(){
+    if(!onnxBuffer){ loadMsg.textContent = 'Choose an .onnx file first.'; loadMsg.style.color='var(--bad)'; return; }
+    if(!tokRaw){ loadMsg.textContent = 'Choose a tokenizer file first.'; loadMsg.style.color='var(--bad)'; return; }
+
+    setStatus('busy','loading…');
+    loadMsg.textContent = 'Loading…'; loadMsg.style.color='var(--muted)';
+    document.getElementById('load-btn').disabled = true;
+
+    try{
+      if(typeof ort === 'undefined'){
+        throw new Error('onnxruntime-web did not load from the CDN — check your internet connection and reload the page.');
+      }
+      ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.2/dist/';
+      ort.env.wasm.numThreads = 1;
+      ort.env.wasm.proxy = false;
+      ort.env.wasm.simd = !document.getElementById('cfg-nosimd').checked;
+      log('Creating ONNX Runtime session…');
+      session = await ort.InferenceSession.create(onnxBuffer, { executionProviders: ['wasm'] });
+      log('Session ready. Inputs: '+session.inputNames.join(', ')+' | Outputs: '+session.outputNames.join(', '));
+
+      tokenizer = tokType.value === 'bpe' ? new BPETokenizer(tokRaw) : new WordTokenizer(tokRaw);
+      log(`Tokenizer ready (${tokenizer.vocab.size} tokens, mode=${tokType.value})`);
+
+      modelReady = true;
+      setStatus('ready','ready — '+ (onnxFileName||'model'));
+      loadMsg.textContent = 'Model and tokenizer loaded.'; loadMsg.style.color='var(--good)';
+      document.getElementById('composer-input').disabled = false;
+      document.getElementById('send-btn').disabled = false;
+      document.getElementById('empty-state').style.display = 'none';
+    }catch(err){
+      const detail = errorDetail(err);
+      log('Load failed: '+detail, true);
+      setStatus('error','load failed — see console panel');
+      loadMsg.textContent = 'Failed: '+detail; loadMsg.style.color='var(--bad)';
+    }finally{
+      document.getElementById('load-btn').disabled = false;
+    }
+  }
+
+  // Errors from onnxruntime-web / the browser aren't always standard Error
+  // objects (sometimes a bare string, a DOMException with no message, or an
+  // ErrorEvent from a worker) — pull out whatever text is actually there
+  // instead of falling back to "undefined".
+  function errorDetail(err){
+    if(err===undefined || err===null) return 'unknown error (no detail provided)';
+    if(typeof err === 'number'){
+      return `${err} (raw WASM abort, not a JS error — usually a SIMD mismatch, `
+        + `an operator with no WASM kernel in onnxruntime-web, or memory exhaustion. `
+        + `Try the "Disable WASM SIMD" toggle above, or test this file on a desktop `
+        + `browser's DevTools console for a clearer message.)`;
+    }
+    if(typeof err === 'string') return err;
+    const parts = [];
+    if(err.message) parts.push(err.message);
+    if(err.name && !parts.length) parts.push(err.name);
+    if(err.reason) parts.push('reason: '+errorDetail(err.reason));
+    if(parts.length===0){
+      try{
+        const s = JSON.stringify(err, Object.getOwnPropertyNames(err));
+        if(s && s!=='{}') parts.push(s);
+      }catch(e){ /* not serializable */ }
+    }
+    if(parts.length===0){
+      try{ parts.push(String(err)); }catch(e){ parts.push('non-stringifiable error object'); }
+    }
+    return parts.join(' — ');
+  }
+
+  // Surface failures that happen outside the try/catch (e.g. a worker
+  // onnxruntime-web spawns internally failing to load) so they show up in
+  // the console panel instead of vanishing silently.
+  window.addEventListener('unhandledrejection', (e)=>{
+    log('Unhandled promise rejection: '+errorDetail(e.reason), true);
+  });
+  window.addEventListener('error', (e)=>{
+    if(e && e.message) log('Window error: '+e.message+(e.filename?(' ('+e.filename+':'+e.lineno+')'):''), true);
+  });
+
+  // ================= Sampling =================
+  function softmax(arr){
+    let max=-Infinity; for(const v of arr) if(v>max) max=v;
+    const exps = new Float64Array(arr.length);
+    let sum=0;
+    for(let i=0;i<arr.length;i++){ exps[i]=Math.exp(arr[i]-max); sum+=exps[i]; }
+    for(let i=0;i<exps.length;i++) exps[i]/=sum;
+    return exps;
+  }
+
+  function sampleNext(logitsArr, generatedIds, params){
+    const vocabSize = logitsArr.length;
+    const logits = Float64Array.from(logitsArr);
+
+    // repetition penalty
+    if(params.repPenalty && params.repPenalty !== 1){
+      const seen = new Set(generatedIds.slice(-64));
+      for(const id of seen){
+        if(id<0||id>=vocabSize) continue;
+        logits[id] = logits[id] > 0 ? logits[id]/params.repPenalty : logits[id]*params.repPenalty;
+      }
+    }
+
+    if(params.temperature <= 0){
+      let bestI=0, bestV=-Infinity;
+      for(let i=0;i<vocabSize;i++) if(logits[i]>bestV){ bestV=logits[i]; bestI=i; }
+      return { id: bestI, topList: [{id:bestI, p:1}] };
+    }
+
+    for(let i=0;i<vocabSize;i++) logits[i] /= params.temperature;
+    let probs = softmax(logits);
+
+    // top-k
+    let indices = Array.from(probs.keys());
+    if(params.topK && params.topK > 0 && params.topK < vocabSize){
+      indices.sort((a,b)=>probs[b]-probs[a]);
+      indices = indices.slice(0, params.topK);
+    } else {
+      indices.sort((a,b)=>probs[b]-probs[a]);
+    }
+
+    // top-p (nucleus) on the already-sorted (by prob desc) candidate set
+    if(params.topP && params.topP < 1){
+      let cum=0, cutoff=indices.length;
+      for(let i=0;i<indices.length;i++){
+        cum += probs[indices[i]];
+        if(cum >= params.topP){ cutoff = i+1; break; }
+      }
+      indices = indices.slice(0, Math.max(1,cutoff));
+    }
+
+    let renormSum=0;
+    for(const idx of indices) renormSum += probs[idx];
+    const r = Math.random() * renormSum;
+    let acc=0, chosen=indices[0];
+    for(const idx of indices){
+      acc += probs[idx];
+      if(r <= acc){ chosen = idx; break; }
+    }
+
+    const topList = indices.slice(0,5).map(idx=>({id:idx, p:probs[idx]}));
+    return { id: chosen, topList };
+  }
+
+  // ================= Pulse strip =================
+  const pulseStrip = document.getElementById('pulse-strip');
+  function clearPulse(){ pulseStrip.innerHTML=''; }
+  function pushPulse(topList){
+    const top = topList[0];
+    const bar = document.createElement('div');
+    bar.className = 'pulse-bar';
+    const h = Math.max(3, Math.round(top.p*32));
+    bar.style.height = h+'px';
+    bar.style.background = top.p>0.6 ? 'var(--good)' : top.p>0.3 ? 'var(--accent)' : 'var(--accent-dim)';
+    const tip = document.createElement('div');
+    tip.className = 'pulse-tip';
+    topList.forEach((c,i)=>{
+      const row = document.createElement('div');
+      row.className = 't-row' + (i===0?' top':'');
+      const label = tokenizer ? (tokenizer.decode ? tokenizer.decode([c.id]) : c.id) : c.id;
+      row.innerHTML = `<span>${escapeHtml(JSON.stringify(label).slice(0,14))}</span><span>${(c.p*100).toFixed(1)}%</span>`;
+      tip.appendChild(row);
+    });
+    bar.appendChild(tip);
+    pulseStrip.appendChild(bar);
+    pulseStrip.scrollLeft = pulseStrip.scrollWidth;
+  }
+
+  function escapeHtml(s){
+    return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  // ================= Chat state / rendering =================
+  const chatScroll = document.getElementById('chat-scroll');
+  let history = []; // {role:'user'|'assistant', content:string}
+
+  function renderMessage(role, content){
+    const wrap = document.createElement('div');
+    wrap.className = 'msg ' + role;
+    const roleEl = document.createElement('div');
+    roleEl.className = 'role';
+    roleEl.textContent = role === 'user' ? 'you' : 'agent';
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    bubble.textContent = content;
+    wrap.appendChild(roleEl); wrap.appendChild(bubble);
+    chatScroll.appendChild(wrap);
+    chatScroll.scrollTop = chatScroll.scrollHeight;
+    return bubble;
+  }
+
+  function buildPrompt(){
+    const sys = document.getElementById('cfg-system').value.trim();
+    const template = document.getElementById('cfg-template').value;
+    const historyText = history.map(m => (m.role==='user'?'User: ':'Assistant: ') + m.content).join('\n');
+    return template.replace('{system}', sys).replace('{history}', historyText);
+  }
+
+  // ================= Generation loop =================
+  let generating = false;
+  let stopRequested = false;
+
+  const composerInput = document.getElementById('composer-input');
+  const sendBtn = document.getElementById('send-btn');
+  const stopBtn = document.getElementById('stop-btn');
+
+  composerInput.addEventListener('input', ()=>{
+    composerInput.style.height = 'auto';
+    composerInput.style.height = Math.min(160, composerInput.scrollHeight)+'px';
+  });
+  composerInput.addEventListener('keydown', (e)=>{
+    if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); sendMessage(); }
+  });
+  sendBtn.addEventListener('click', sendMessage);
+  stopBtn.addEventListener('click', ()=>{ stopRequested = true; });
+
+  async function sendMessage(){
+    if(!modelReady || generating) return;
+    const text = composerInput.value.trim();
+    if(!text) return;
+    composerInput.value=''; composerInput.style.height='auto';
+    history.push({role:'user', content:text});
+    renderMessage('user', text);
+
+    const bubble = renderMessage('assistant', '');
+    bubble.classList.add('streaming');
+    clearPulse();
+
+    generating = true; stopRequested = false;
+    sendBtn.style.display='none'; stopBtn.style.display='inline-block';
+    setStatus('busy','generating…');
+
+    try{
+      const reply = await generate(bubble);
+      history.push({role:'assistant', content:reply});
+    }catch(err){
+      log('Generation error: '+err.message, true);
+      bubble.textContent += '\n[error: '+err.message+']';
+      setStatus('error','generation failed — see console');
+    }finally{
+      bubble.classList.remove('streaming');
+      generating = false;
+      sendBtn.style.display='inline-flex'; stopBtn.style.display='none';
+      if(statusPill.className.indexOf('error')===-1) setStatus('ready','ready — '+(onnxFileName||'model'));
+    }
+  }
+
+  async function generate(bubble){
+    const inputName = document.getElementById('cfg-input-name').value.trim();
+    const outputName = document.getElementById('cfg-output-name').value.trim();
+    const dtype = document.getElementById('cfg-dtype').value;
+    const ctxLen = parseInt(document.getElementById('cfg-ctx').value,10) || 256;
+    const useAttnMask = document.getElementById('cfg-attnmask').checked;
+    const bosVal = document.getElementById('cfg-bos').value;
+    const eosVal = document.getElementById('cfg-eos').value;
+    const eosId = eosVal!=='' ? parseInt(eosVal,10) : null;
+    const bosId = bosVal!=='' ? parseInt(bosVal,10) : null;
+
+    const params = {
+      temperature: parseFloat(document.getElementById('cfg-temp').value),
+      topK: parseInt(document.getElementById('cfg-topk').value,10),
+      topP: parseFloat(document.getElementById('cfg-topp').value),
+      repPenalty: parseFloat(document.getElementById('cfg-reppen').value),
+    };
+    const maxNew = parseInt(document.getElementById('cfg-maxtok').value,10);
+
+    const prompt = buildPrompt();
+    let ids = tokenizer.encode(prompt);
+    if(bosId!==null) ids = [bosId, ...ids];
+    if(ids.length > ctxLen) ids = ids.slice(ids.length - ctxLen);
+
+    const startLen = ids.length;
+    let outText = '';
+
+    for(let step=0; step<maxNew; step++){
+      if(stopRequested){ log('Stopped by user.'); break; }
+      if(ids.length > ctxLen) ids = ids.slice(ids.length - ctxLen);
+
+      const seqLen = ids.length;
+      const dataCtor = dtype==='int64' ? BigInt64Array : Int32Array;
+      const idsData = new dataCtor(seqLen);
+      for(let i=0;i<seqLen;i++) idsData[i] = dtype==='int64' ? BigInt(ids[i]) : ids[i];
+      const inputTensor = new ort.Tensor(dtype, idsData, [1, seqLen]);
+
+      const feeds = {};
+      feeds[inputName] = inputTensor;
+      if(useAttnMask){
+        const maskData = new dataCtor(seqLen);
+        for(let i=0;i<seqLen;i++) maskData[i] = dtype==='int64' ? 1n : 1;
+        feeds['attention_mask'] = new ort.Tensor(dtype, maskData, [1, seqLen]);
+      }
+
+      const results = await session.run(feeds);
+      const outTensor = results[outputName];
+      if(!outTensor) throw new Error(`Output "${outputName}" not found. Available: ${Object.keys(results).join(', ')}`);
+
+      const dims = outTensor.dims;
+      const vocabSize = dims[dims.length-1];
+      const flat = outTensor.data;
+      let lastLogits;
+      if(dims.length===3){
+        const seq = dims[1];
+        const offset = (seq-1)*vocabSize;
+        lastLogits = flat.slice(offset, offset+vocabSize);
+      } else {
+        lastLogits = flat.slice(0, vocabSize);
+      }
+      const lastLogitsArr = Array.from(lastLogits, v=>Number(v));
+
+      const { id: nextId, topList } = sampleNext(lastLogitsArr, ids, params);
+      pushPulse(topList);
+
+      if(eosId!==null && nextId===eosId){ log('EOS reached.'); break; }
+
+      ids.push(nextId);
+      const piece = tokenizer.decode([nextId]);
+      outText += piece;
+      bubble.textContent = outText;
+      chatScroll.scrollTop = chatScroll.scrollHeight;
+
+      // yield to the UI thread so Stop button / rendering stays responsive
+      await new Promise(r=>setTimeout(r,0));
+    }
+
+    return outText.trim();
+  }
+
+})();
+</script>
+</body>
+</html>

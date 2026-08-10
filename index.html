@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BENCH — Local Model Console</title>
+<title>BENCH — Multi-Agent Console</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.2/dist/ort.min.js"></script>
@@ -22,6 +22,7 @@
     --accent-glow:rgba(227,168,87,0.18);
     --good:#6FCF97;
     --bad:#E36F6F;
+    --violet:#9C8CE3;
     --radius:3px;
   }
   *{box-sizing:border-box;}
@@ -48,7 +49,7 @@
   /* ---------- Layout shell ---------- */
   #app{display:flex;width:100%;height:100%;}
   #sidebar{
-    width:320px;min-width:320px;
+    width:330px;min-width:330px;
     background:var(--surface);
     border-right:1px solid var(--border);
     display:flex;flex-direction:column;
@@ -97,6 +98,9 @@
   .panel.collapsed .chev{transform:rotate(-90deg);}
   .panel-body{padding:0 18px 16px;display:flex;flex-direction:column;gap:10px;}
   .panel.collapsed .panel-body{display:none;}
+  .panel-head .agent-dot{width:7px;height:7px;border-radius:50%;background:var(--muted-dim);margin-right:8px;flex-shrink:0;}
+  .panel-head .agent-dot.ready{background:var(--good);box-shadow:0 0 5px var(--good);}
+  .panel-head .head-left{display:flex;align-items:center;}
 
   .field{display:flex;flex-direction:column;gap:4px;}
   .field label{
@@ -158,28 +162,32 @@
   .toggle-row{display:flex;align-items:center;justify-content:space-between;}
   .toggle-row label{font-size:11px;color:var(--muted);font-family:'IBM Plex Mono',monospace;}
 
+  .url-block{border-top:1px solid var(--border-soft);margin-top:4px;padding-top:12px;display:flex;flex-direction:column;gap:10px;}
+
   /* ---------- Main / chat header ---------- */
   #chat-header{
-    padding:14px 24px;
+    padding:12px 24px;
     border-bottom:1px solid var(--border);
     display:flex;align-items:center;justify-content:space-between;
     background:var(--surface);
     flex-shrink:0;
+    gap:12px;
+    flex-wrap:wrap;
   }
-  #chat-header .agent{
-    display:flex;align-items:center;gap:10px;
-  }
+  #chat-header .agent{display:flex;align-items:center;gap:10px;}
   #chat-header .agent-name{
     font-family:'Space Grotesk',sans-serif;
     font-weight:600;font-size:14.5px;
   }
+  .pills{display:flex;gap:8px;flex-wrap:wrap;}
   .status-pill{
     display:flex;align-items:center;gap:6px;
     font-family:'IBM Plex Mono',monospace;
-    font-size:11px;color:var(--muted);
+    font-size:10.5px;color:var(--muted);
     padding:4px 10px;border:1px solid var(--border);border-radius:20px;
+    white-space:nowrap;
   }
-  .status-pill .dot{width:6px;height:6px;border-radius:50%;background:var(--muted-dim);}
+  .status-pill .dot{width:6px;height:6px;border-radius:50%;background:var(--muted-dim);flex-shrink:0;}
   .status-pill.ready .dot{background:var(--good);box-shadow:0 0 6px var(--good);}
   .status-pill.busy .dot{background:var(--accent);box-shadow:0 0 6px var(--accent);animation:pulse 1s infinite;}
   .status-pill.error .dot{background:var(--bad);}
@@ -195,7 +203,7 @@
   }
   .empty-state{
     margin:auto;
-    max-width:420px;
+    max-width:440px;
     text-align:center;
     color:var(--muted);
   }
@@ -220,6 +228,12 @@
   .msg .role{
     font-family:'IBM Plex Mono',monospace;font-size:10px;
     color:var(--muted-dim);letter-spacing:0.06em;text-transform:uppercase;
+    display:flex;align-items:center;gap:8px;
+  }
+  .msg .route-tag{
+    font-family:'IBM Plex Mono',monospace;font-size:9.5px;
+    color:var(--violet);border:1px solid var(--violet);border-radius:10px;
+    padding:1px 7px;letter-spacing:0.02em;text-transform:none;
   }
   .msg .bubble{
     padding:10px 14px;border-radius:10px;
@@ -231,8 +245,9 @@
   .msg.assistant .bubble.streaming::after{
     content:'▍';color:var(--accent);animation:pulse .8s infinite;
   }
+  .msg.assistant .bubble.notice{color:var(--muted);font-style:italic;}
 
-  /* ---------- Token pulse strip (signature element) ---------- */
+  /* ---------- Token pulse strip ---------- */
   #pulse-wrap{
     border-top:1px solid var(--border);
     background:var(--surface);
@@ -319,85 +334,167 @@
   <aside id="sidebar">
     <div class="brand">
       <div class="mark">BENCH<span>_</span></div>
-      <div class="sub">local model console · agent: vocab-v1</div>
+      <div class="sub">local model console · multi-agent</div>
     </div>
 
-    <!-- Model files -->
+    <!-- Routing -->
     <div class="panel" data-panel>
-      <div class="panel-head" data-toggle><h3>Model files</h3><span class="chev">▾</span></div>
+      <div class="panel-head" data-toggle><h3>Routing</h3><span class="chev">▾</span></div>
+      <div class="panel-body">
+        <div class="field">
+          <label>Router mode</label>
+          <select id="cfg-router-mode">
+            <option value="auto">Auto (keyword match)</option>
+            <option value="force-vocab">Force → Vocab Agent</option>
+            <option value="force-dialogue">Force → Dialogue Agent</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Default agent (when uncertain)</label>
+          <select id="cfg-router-default">
+            <option value="dialogue" selected>Dialogue Agent</option>
+            <option value="vocab">Vocab Agent</option>
+          </select>
+        </div>
+        <div class="hint">
+          Auto mode looks for vocab-style phrasing ("define", "synonym", "opposite of", "mean") vs.
+          conversational phrasing ("hi", "thanks", "how are you") and routes accordingly. Anything
+          it can't classify falls to the default agent above. Every reply is tagged with which agent handled it.
+        </div>
+      </div>
+    </div>
+
+    <!-- Vocab Agent files -->
+    <div class="panel" data-panel data-agent-panel="vocab">
+      <div class="panel-head" data-toggle>
+        <div class="head-left"><span class="agent-dot" id="vocab-dot"></span><h3>Vocab Agent</h3></div>
+        <span class="chev">▾</span>
+      </div>
       <div class="panel-body">
         <div class="field">
           <label>ONNX model (.onnx)</label>
-          <label class="filebtn" id="onnx-filebtn">
+          <label class="filebtn" id="vocab-onnx-filebtn">
             <span class="status-dot"></span>
-            <span id="onnx-filename">Choose model.onnx…</span>
-            <input type="file" id="onnx-input" accept=".onnx">
+            <span id="vocab-onnx-filename">Choose model.onnx…</span>
+            <input type="file" id="vocab-onnx-input" accept=".onnx">
           </label>
         </div>
         <div class="field">
           <label>Tokenizer type</label>
-          <select id="tok-type">
+          <select id="vocab-tok-type">
             <option value="bpe">Byte-level BPE (tokenizer.json)</option>
             <option value="word">Word-level (vocab.json)</option>
           </select>
         </div>
         <div class="field">
-          <label id="tok-file-label">Tokenizer file</label>
-          <label class="filebtn" id="tok-filebtn">
+          <label id="vocab-tok-file-label">Tokenizer file</label>
+          <label class="filebtn" id="vocab-tok-filebtn">
             <span class="status-dot"></span>
-            <span id="tok-filename">Choose tokenizer.json…</span>
-            <input type="file" id="tok-input" accept=".json">
+            <span id="vocab-tok-filename">Choose tokenizer.json…</span>
+            <input type="file" id="vocab-tok-input" accept=".json">
           </label>
         </div>
-        <button class="btn" id="load-btn">Load model</button>
-        <div class="field-msg hint" id="load-msg" style="color:var(--muted);font-size:11px;"></div>
+        <button class="btn" id="vocab-load-btn">Load Vocab Agent</button>
+        <div class="hint" id="vocab-load-msg"></div>
 
-        <div style="border-top:1px solid var(--border-soft);margin-top:4px;padding-top:12px;">
-          <div class="hint" style="margin-bottom:8px;">— or load directly from URL (e.g. files sitting next to this page on GitHub Pages) —</div>
-          <div class="field">
-            <label>Model URL</label>
-            <input type="text" id="url-onnx" value="./vocab_agent.onnx">
-          </div>
-          <div class="field">
-            <label>Tokenizer URL</label>
-            <input type="text" id="url-tok" value="./tokenizer.json">
-          </div>
-          <button class="btn secondary" id="fetch-url-btn" style="margin-top:4px;">Fetch &amp; load from URL</button>
+        <div class="url-block">
+          <div class="hint">— or load directly from URL —</div>
+          <div class="field"><label>Model URL</label><input type="text" id="vocab-url-onnx" value="./vocab_agent.onnx"></div>
+          <div class="field"><label>Tokenizer URL</label><input type="text" id="vocab-url-tok" value="./tokenizer.json"></div>
+          <button class="btn secondary" id="vocab-fetch-url-btn">Fetch &amp; load from URL</button>
         </div>
       </div>
     </div>
 
-    <!-- I/O config -->
+    <!-- Vocab Agent Graph I/O -->
     <div class="panel collapsed" data-panel>
-      <div class="panel-head" data-toggle><h3>Graph I/O</h3><span class="chev">▾</span></div>
+      <div class="panel-head" data-toggle><h3>Vocab Agent — Graph I/O</h3><span class="chev">▾</span></div>
       <div class="panel-body">
         <div class="row2">
-          <div class="field"><label>Input tensor name</label><input type="text" id="cfg-input-name" value="input_ids"></div>
-          <div class="field"><label>Output tensor name</label><input type="text" id="cfg-output-name" value="logits"></div>
+          <div class="field"><label>Input tensor name</label><input type="text" id="vocab-cfg-input-name" value="input_ids"></div>
+          <div class="field"><label>Output tensor name</label><input type="text" id="vocab-cfg-output-name" value="logits"></div>
         </div>
         <div class="row2">
           <div class="field"><label>Input dtype</label>
-            <select id="cfg-dtype"><option value="int64">int64</option><option value="int32">int32</option></select>
+            <select id="vocab-cfg-dtype"><option value="int64">int64</option><option value="int32">int32</option></select>
           </div>
-          <div class="field"><label>Context length</label><input type="number" id="cfg-ctx" value="128" min="8"></div>
+          <div class="field"><label>Context length</label><input type="number" id="vocab-cfg-ctx" value="128" min="8"></div>
         </div>
         <div class="row2">
-          <div class="field"><label>BOS token id</label><input type="number" id="cfg-bos" placeholder="none"></div>
-          <div class="field"><label>EOS token id</label><input type="number" id="cfg-eos" value="0"></div>
+          <div class="field"><label>BOS token id</label><input type="number" id="vocab-cfg-bos" placeholder="none"></div>
+          <div class="field"><label>EOS token id</label><input type="number" id="vocab-cfg-eos" value="0"></div>
         </div>
-        <div class="toggle-row">
-          <label>Send attention_mask input</label>
-          <input type="checkbox" id="cfg-attnmask">
-        </div>
-        <div class="toggle-row">
-          <label>Disable WASM SIMD (mobile compatibility)</label>
-          <input type="checkbox" id="cfg-nosimd">
-        </div>
-        <div class="hint">These must match how you exported the ONNX graph in Colab. If load or inference fails, check these first — the console panel below logs the exact error.</div>
+        <div class="toggle-row"><label>Send attention_mask input</label><input type="checkbox" id="vocab-cfg-attnmask"></div>
+        <div class="toggle-row"><label>Disable WASM SIMD</label><input type="checkbox" id="vocab-cfg-nosimd"></div>
       </div>
     </div>
 
-    <!-- Prompt template -->
+    <!-- Dialogue Agent files -->
+    <div class="panel" data-panel data-agent-panel="dialogue">
+      <div class="panel-head" data-toggle>
+        <div class="head-left"><span class="agent-dot" id="dialogue-dot"></span><h3>Dialogue Agent</h3></div>
+        <span class="chev">▾</span>
+      </div>
+      <div class="panel-body">
+        <div class="field">
+          <label>ONNX model (.onnx)</label>
+          <label class="filebtn" id="dialogue-onnx-filebtn">
+            <span class="status-dot"></span>
+            <span id="dialogue-onnx-filename">Choose model.onnx…</span>
+            <input type="file" id="dialogue-onnx-input" accept=".onnx">
+          </label>
+        </div>
+        <div class="field">
+          <label>Tokenizer type</label>
+          <select id="dialogue-tok-type">
+            <option value="bpe">Byte-level BPE (tokenizer.json)</option>
+            <option value="word">Word-level (vocab.json)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label id="dialogue-tok-file-label">Tokenizer file</label>
+          <label class="filebtn" id="dialogue-tok-filebtn">
+            <span class="status-dot"></span>
+            <span id="dialogue-tok-filename">Choose tokenizer.json…</span>
+            <input type="file" id="dialogue-tok-input" accept=".json">
+          </label>
+        </div>
+        <button class="btn" id="dialogue-load-btn">Load Dialogue Agent</button>
+        <div class="hint" id="dialogue-load-msg"></div>
+
+        <div class="url-block">
+          <div class="hint">— or load directly from URL —</div>
+          <div class="field"><label>Model URL</label><input type="text" id="dialogue-url-onnx" value="./dialogue_agent.onnx"></div>
+          <div class="field"><label>Tokenizer URL</label><input type="text" id="dialogue-url-tok" value="./dialogue_tokenizer.json"></div>
+          <button class="btn secondary" id="dialogue-fetch-url-btn">Fetch &amp; load from URL</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Dialogue Agent Graph I/O -->
+    <div class="panel collapsed" data-panel>
+      <div class="panel-head" data-toggle><h3>Dialogue Agent — Graph I/O</h3><span class="chev">▾</span></div>
+      <div class="panel-body">
+        <div class="row2">
+          <div class="field"><label>Input tensor name</label><input type="text" id="dialogue-cfg-input-name" value="input_ids"></div>
+          <div class="field"><label>Output tensor name</label><input type="text" id="dialogue-cfg-output-name" value="logits"></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label>Input dtype</label>
+            <select id="dialogue-cfg-dtype"><option value="int64">int64</option><option value="int32">int32</option></select>
+          </div>
+          <div class="field"><label>Context length</label><input type="number" id="dialogue-cfg-ctx" value="128" min="8"></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label>BOS token id</label><input type="number" id="dialogue-cfg-bos" placeholder="none"></div>
+          <div class="field"><label>EOS token id</label><input type="number" id="dialogue-cfg-eos" value="0"></div>
+        </div>
+        <div class="toggle-row"><label>Send attention_mask input</label><input type="checkbox" id="dialogue-cfg-attnmask"></div>
+        <div class="toggle-row"><label>Disable WASM SIMD</label><input type="checkbox" id="dialogue-cfg-nosimd"></div>
+      </div>
+    </div>
+
+    <!-- Prompt template (shared — both agents were trained on the same User:/Assistant: shape) -->
     <div class="panel collapsed" data-panel>
       <div class="panel-head" data-toggle><h3>Prompt template</h3><span class="chev">▾</span></div>
       <div class="panel-body">
@@ -410,12 +507,12 @@
           <textarea id="cfg-template" rows="3">{system}
 {history}
 Assistant:</textarea>
-          <div class="hint">Only matters if your training data used a specific format — a from-scratch model has no built-in chat template, so this string is literally what gets tokenized.</div>
+          <div class="hint">Shared by both agents — they were trained on the same User:/Assistant: format. Each agent keeps its own separate conversation history, so switching agents mid-chat won't feed one model's context into the other.</div>
         </div>
       </div>
     </div>
 
-    <!-- Generation params -->
+    <!-- Generation params (shared) -->
     <div class="panel" data-panel>
       <div class="panel-head" data-toggle><h3>Generation</h3><span class="chev">▾</span></div>
       <div class="panel-body">
@@ -454,21 +551,24 @@ Assistant:</textarea>
     <div id="chat-header">
       <div class="agent">
         <button id="sidebar-toggle">☰</button>
-        <span class="agent-name">Vocab Agent</span>
+        <span class="agent-name">Multi-Agent Console</span>
       </div>
-      <div class="status-pill" id="status-pill"><span class="dot"></span><span id="status-text">no model loaded</span></div>
+      <div class="pills">
+        <div class="status-pill" id="pill-vocab"><span class="dot"></span><span>vocab: not loaded</span></div>
+        <div class="status-pill" id="pill-dialogue"><span class="dot"></span><span>dialogue: not loaded</span></div>
+      </div>
     </div>
 
     <div id="chat-scroll">
       <div class="empty-state" id="empty-state">
         <div class="glyph">////</div>
         <h4>Nothing loaded yet</h4>
-        <p>This console runs entirely in your browser against a model you trained and exported yourself.</p>
+        <p>This console runs entirely in your browser, routing each message between two models you trained and exported yourself.</p>
         <ol>
-          <li>Load your <b>.onnx</b> file and tokenizer in the sidebar</li>
-          <li>Check the Graph I/O names match your export</li>
-          <li>Click <b>Load model</b> — the status dot turns green when ready</li>
-          <li>Chat below. Each token's confidence shows in the pulse strip</li>
+          <li>Load the <b>Vocab Agent</b> and/or <b>Dialogue Agent</b> in the sidebar (either works alone too)</li>
+          <li>Check each agent's Graph I/O names match your export</li>
+          <li>Chat below — each reply is tagged with which agent handled it</li>
+          <li>Use Router mode to force everything to one agent while testing</li>
         </ol>
       </div>
     </div>
@@ -480,8 +580,8 @@ Assistant:</textarea>
 
     <div id="composer">
       <div id="composer-inner">
-        <textarea id="composer-input" rows="1" placeholder="Message the vocab agent…" disabled></textarea>
-        <button class="btn" id="send-btn" disabled>↑</button>
+        <textarea id="composer-input" rows="1" placeholder="Message the agents…"></textarea>
+        <button class="btn" id="send-btn">↑</button>
         <button class="btn danger" id="stop-btn">Stop</button>
       </div>
       <div id="composer-hint">Enter to send · Shift+Enter for newline · runs 100% locally in-browser</div>
@@ -513,7 +613,7 @@ Assistant:</textarea>
   const sidebar = document.getElementById('sidebar');
   document.getElementById('sidebar-toggle').addEventListener('click', ()=> sidebar.classList.toggle('open'));
 
-  // ================= Range value labels =================
+  // ================= Range value labels (shared generation params) =================
   const bindRange = (id, labelId, fmt) => {
     const el = document.getElementById(id), lab = document.getElementById(labelId);
     const update = () => lab.textContent = fmt ? fmt(el.value) : el.value;
@@ -525,42 +625,33 @@ Assistant:</textarea>
   bindRange('cfg-topp','v-topp', v=>parseFloat(v).toFixed(2));
   bindRange('cfg-reppen','v-reppen', v=>parseFloat(v).toFixed(2));
 
-  // ================= Tokenizer type toggling label =================
-  const tokType = document.getElementById('tok-type');
-  const tokFileLabel = document.getElementById('tok-file-label');
-  const tokFilename = document.getElementById('tok-filename');
-  tokType.addEventListener('change', ()=>{
-    if(tokType.value === 'bpe'){
-      tokFileLabel.textContent = 'Tokenizer file';
-      tokFilename.textContent = 'Choose tokenizer.json…';
-    } else {
-      tokFileLabel.textContent = 'Vocab file';
-      tokFilename.textContent = 'Choose vocab.json…';
+  function errorDetail(err){
+    if(err===undefined || err===null) return 'unknown error (no detail provided)';
+    if(typeof err === 'number'){
+      return `${err} (raw WASM abort, not a JS error — usually a SIMD mismatch, `
+        + `an operator with no WASM kernel in onnxruntime-web, or memory exhaustion. `
+        + `Try the "Disable WASM SIMD" toggle, or test this file on a desktop `
+        + `browser's DevTools console for a clearer message.)`;
     }
-  });
-
-  // ================= File pickers =================
-  let onnxBuffer = null, onnxFileName = null;
-  let tokRaw = null, tokFileName = null;
-
-  document.getElementById('onnx-input').addEventListener('change', async (e)=>{
-    const f = e.target.files[0]; if(!f) return;
-    onnxFileName = f.name;
-    onnxBuffer = await f.arrayBuffer();
-    document.getElementById('onnx-filename').textContent = f.name;
-    document.getElementById('onnx-filebtn').classList.add('loaded');
-    log(`Read ${f.name} (${(onnxBuffer.byteLength/1e6).toFixed(2)} MB)`);
-  });
-
-  document.getElementById('tok-input').addEventListener('change', async (e)=>{
-    const f = e.target.files[0]; if(!f) return;
-    tokFileName = f.name;
-    const text = await f.text();
-    try{ tokRaw = JSON.parse(text); }
-    catch(err){ log('Tokenizer file is not valid JSON: '+err.message, true); return; }
-    document.getElementById('tok-filename').textContent = f.name;
-    document.getElementById('tok-filebtn').classList.add('loaded');
-    log(`Parsed tokenizer file ${f.name}`);
+    if(typeof err === 'string') return err;
+    const parts = [];
+    if(err.message) parts.push(err.message);
+    if(err.name && !parts.length) parts.push(err.name);
+    if(err.reason) parts.push('reason: '+errorDetail(err.reason));
+    if(parts.length===0){
+      try{
+        const s = JSON.stringify(err, Object.getOwnPropertyNames(err));
+        if(s && s!=='{}') parts.push(s);
+      }catch(e){ /* not serializable */ }
+    }
+    if(parts.length===0){
+      try{ parts.push(String(err)); }catch(e){ parts.push('non-stringifiable error object'); }
+    }
+    return parts.join(' — ');
+  }
+  window.addEventListener('unhandledrejection', (e)=> log('Unhandled promise rejection: '+errorDetail(e.reason), true));
+  window.addEventListener('error', (e)=>{
+    if(e && e.message) log('Window error: '+e.message+(e.filename?(' ('+e.filename+':'+e.lineno+')'):''), true);
   });
 
   // ================= Byte-level BPE tokenizer =================
@@ -613,7 +704,6 @@ Assistant:</textarea>
       this.unicodeToByte = maps.unicodeToByte;
       this.cache = new Map();
 
-      // special / added tokens
       this.unkId = null;
       if(tokJson.added_tokens){
         for(const t of tokJson.added_tokens){
@@ -703,7 +793,6 @@ Assistant:</textarea>
     }
     decode(ids){
       const toks = ids.map(id=>this.idToToken.get(id)).filter(t=>t!==undefined);
-      // light cleanup so punctuation doesn't float with a leading space
       let out='';
       for(const t of toks){
         if(/^[.,!?;:'")\]]/.test(t) || out==='') out += t;
@@ -713,59 +802,109 @@ Assistant:</textarea>
     }
   }
 
-  // ================= Model state =================
-  let session = null;
-  let tokenizer = null;
-  let modelReady = false;
-  const statusPill = document.getElementById('status-pill');
-  const statusText = document.getElementById('status-text');
-  function setStatus(mode, text){
-    statusPill.className = 'status-pill ' + mode;
-    statusText.textContent = text;
+  // ================= Agent state =================
+  function makeAgent(key, displayName){
+    return {
+      key, displayName,
+      session: null, tokenizer: null, ready: false,
+      onnxBuffer: null, tokRaw: null,
+      onnxFileName: null, tokFileName: null,
+      history: [], // {role:'user'|'assistant', content:string} — this agent's own context only
+    };
+  }
+  const agents = {
+    vocab: makeAgent('vocab', 'Vocab Agent'),
+    dialogue: makeAgent('dialogue', 'Dialogue Agent'),
+  };
+
+  function el(agentKey, suffix){ return document.getElementById(agentKey+'-'+suffix); }
+
+  function setPill(agentKey, mode, text){
+    const pill = document.getElementById('pill-'+agentKey);
+    pill.className = 'status-pill ' + mode;
+    pill.querySelector('span:last-child').textContent = text;
+    document.getElementById(agentKey+'-dot').classList.toggle('ready', mode==='ready' || mode==='busy');
   }
 
-  document.getElementById('load-btn').addEventListener('click', loadModel);
-  const loadMsg = document.getElementById('load-msg');
+  // ---- Wire up file pickers / tokenizer type / load / URL fetch, per agent ----
+  function setupAgentPanel(agentKey){
+    const agent = agents[agentKey];
 
-  document.getElementById('fetch-url-btn').addEventListener('click', async ()=>{
-    const onnxUrl = document.getElementById('url-onnx').value.trim();
-    const tokUrl = document.getElementById('url-tok').value.trim();
-    if(!onnxUrl || !tokUrl){ loadMsg.textContent = 'Enter both URLs first.'; loadMsg.style.color='var(--bad)'; return; }
-    loadMsg.textContent = 'Fetching…'; loadMsg.style.color='var(--muted)';
-    try{
-      log('Fetching model from '+onnxUrl);
-      const onnxRes = await fetch(onnxUrl);
-      if(!onnxRes.ok) throw new Error(`Model fetch failed: HTTP ${onnxRes.status} for ${onnxUrl}`);
-      onnxBuffer = await onnxRes.arrayBuffer();
-      onnxFileName = onnxUrl.split('/').pop();
-      document.getElementById('onnx-filename').textContent = onnxFileName;
-      document.getElementById('onnx-filebtn').classList.add('loaded');
-      log(`Fetched ${onnxFileName} (${(onnxBuffer.byteLength/1e6).toFixed(2)} MB)`);
+    el(agentKey,'onnx-input').addEventListener('change', async (e)=>{
+      const f = e.target.files[0]; if(!f) return;
+      agent.onnxFileName = f.name;
+      agent.onnxBuffer = await f.arrayBuffer();
+      el(agentKey,'onnx-filename').textContent = f.name;
+      el(agentKey,'onnx-filebtn').classList.add('loaded');
+      log(`[${agentKey}] Read ${f.name} (${(agent.onnxBuffer.byteLength/1e6).toFixed(2)} MB)`);
+    });
 
-      log('Fetching tokenizer from '+tokUrl);
-      const tokRes = await fetch(tokUrl);
-      if(!tokRes.ok) throw new Error(`Tokenizer fetch failed: HTTP ${tokRes.status} for ${tokUrl}`);
-      tokRaw = await tokRes.json();
-      tokFileName = tokUrl.split('/').pop();
-      document.getElementById('tok-filename').textContent = tokFileName;
-      document.getElementById('tok-filebtn').classList.add('loaded');
-      log(`Fetched tokenizer ${tokFileName}`);
+    el(agentKey,'tok-input').addEventListener('change', async (e)=>{
+      const f = e.target.files[0]; if(!f) return;
+      agent.tokFileName = f.name;
+      const text = await f.text();
+      try{ agent.tokRaw = JSON.parse(text); }
+      catch(err){ log(`[${agentKey}] Tokenizer file is not valid JSON: `+err.message, true); return; }
+      el(agentKey,'tok-filename').textContent = f.name;
+      el(agentKey,'tok-filebtn').classList.add('loaded');
+      log(`[${agentKey}] Parsed tokenizer file ${f.name}`);
+    });
 
-      await loadModel();
-    }catch(err){
-      const detail = errorDetail(err);
-      log('URL fetch failed: '+detail, true);
-      loadMsg.textContent = 'Fetch failed: '+detail; loadMsg.style.color='var(--bad)';
-    }
-  });
+    el(agentKey,'tok-type').addEventListener('change', ()=>{
+      const isBpe = el(agentKey,'tok-type').value === 'bpe';
+      el(agentKey,'tok-file-label').textContent = isBpe ? 'Tokenizer file' : 'Vocab file';
+      el(agentKey,'tok-filename').textContent = isBpe ? 'Choose tokenizer.json…' : 'Choose vocab.json…';
+    });
 
-  async function loadModel(){
-    if(!onnxBuffer){ loadMsg.textContent = 'Choose an .onnx file first.'; loadMsg.style.color='var(--bad)'; return; }
-    if(!tokRaw){ loadMsg.textContent = 'Choose a tokenizer file first.'; loadMsg.style.color='var(--bad)'; return; }
+    el(agentKey,'load-btn').addEventListener('click', ()=> loadAgent(agentKey));
 
-    setStatus('busy','loading…');
-    loadMsg.textContent = 'Loading…'; loadMsg.style.color='var(--muted)';
-    document.getElementById('load-btn').disabled = true;
+    el(agentKey,'fetch-url-btn').addEventListener('click', async ()=>{
+      const onnxUrl = el(agentKey,'url-onnx').value.trim();
+      const tokUrl = el(agentKey,'url-tok').value.trim();
+      const msgEl = el(agentKey,'load-msg');
+      if(!onnxUrl || !tokUrl){ msgEl.textContent = 'Enter both URLs first.'; msgEl.style.color='var(--bad)'; return; }
+      msgEl.textContent = 'Fetching…'; msgEl.style.color='var(--muted)';
+      try{
+        log(`[${agentKey}] Fetching model from `+onnxUrl);
+        const onnxRes = await fetch(onnxUrl);
+        if(!onnxRes.ok) throw new Error(`Model fetch failed: HTTP ${onnxRes.status} for ${onnxUrl}`);
+        agent.onnxBuffer = await onnxRes.arrayBuffer();
+        agent.onnxFileName = onnxUrl.split('/').pop();
+        el(agentKey,'onnx-filename').textContent = agent.onnxFileName;
+        el(agentKey,'onnx-filebtn').classList.add('loaded');
+        log(`[${agentKey}] Fetched ${agent.onnxFileName} (${(agent.onnxBuffer.byteLength/1e6).toFixed(2)} MB)`);
+
+        log(`[${agentKey}] Fetching tokenizer from `+tokUrl);
+        const tokRes = await fetch(tokUrl);
+        if(!tokRes.ok) throw new Error(`Tokenizer fetch failed: HTTP ${tokRes.status} for ${tokUrl}`);
+        agent.tokRaw = await tokRes.json();
+        agent.tokFileName = tokUrl.split('/').pop();
+        el(agentKey,'tok-filename').textContent = agent.tokFileName;
+        el(agentKey,'tok-filebtn').classList.add('loaded');
+        log(`[${agentKey}] Fetched tokenizer ${agent.tokFileName}`);
+
+        await loadAgent(agentKey);
+      }catch(err){
+        const detail = errorDetail(err);
+        log(`[${agentKey}] URL fetch failed: `+detail, true);
+        msgEl.textContent = 'Fetch failed: '+detail; msgEl.style.color='var(--bad)';
+      }
+    });
+  }
+  setupAgentPanel('vocab');
+  setupAgentPanel('dialogue');
+
+  async function loadAgent(agentKey){
+    const agent = agents[agentKey];
+    const msgEl = el(agentKey,'load-msg');
+    const loadBtn = el(agentKey,'load-btn');
+
+    if(!agent.onnxBuffer){ msgEl.textContent = 'Choose an .onnx file first.'; msgEl.style.color='var(--bad)'; return; }
+    if(!agent.tokRaw){ msgEl.textContent = 'Choose a tokenizer file first.'; msgEl.style.color='var(--bad)'; return; }
+
+    setPill(agentKey, 'busy', agentKey+': loading…');
+    msgEl.textContent = 'Loading…'; msgEl.style.color='var(--muted)';
+    loadBtn.disabled = true;
 
     try{
       if(typeof ort === 'undefined'){
@@ -774,68 +913,29 @@ Assistant:</textarea>
       ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.2/dist/';
       ort.env.wasm.numThreads = 1;
       ort.env.wasm.proxy = false;
-      ort.env.wasm.simd = !document.getElementById('cfg-nosimd').checked;
-      log('Creating ONNX Runtime session…');
-      session = await ort.InferenceSession.create(onnxBuffer, { executionProviders: ['wasm'] });
-      log('Session ready. Inputs: '+session.inputNames.join(', ')+' | Outputs: '+session.outputNames.join(', '));
+      ort.env.wasm.simd = !el(agentKey,'cfg-nosimd').checked;
 
-      tokenizer = tokType.value === 'bpe' ? new BPETokenizer(tokRaw) : new WordTokenizer(tokRaw);
-      log(`Tokenizer ready (${tokenizer.vocab.size} tokens, mode=${tokType.value})`);
+      log(`[${agentKey}] Creating ONNX Runtime session…`);
+      agent.session = await ort.InferenceSession.create(agent.onnxBuffer, { executionProviders: ['wasm'] });
+      log(`[${agentKey}] Session ready. Inputs: `+agent.session.inputNames.join(', ')+' | Outputs: '+agent.session.outputNames.join(', '));
 
-      modelReady = true;
-      setStatus('ready','ready — '+ (onnxFileName||'model'));
-      loadMsg.textContent = 'Model and tokenizer loaded.'; loadMsg.style.color='var(--good)';
-      document.getElementById('composer-input').disabled = false;
-      document.getElementById('send-btn').disabled = false;
+      const tokType = el(agentKey,'tok-type').value;
+      agent.tokenizer = tokType === 'bpe' ? new BPETokenizer(agent.tokRaw) : new WordTokenizer(agent.tokRaw);
+      log(`[${agentKey}] Tokenizer ready (${agent.tokenizer.vocab.size} tokens, mode=${tokType})`);
+
+      agent.ready = true;
+      setPill(agentKey, 'ready', agentKey+': ready');
+      msgEl.textContent = 'Model and tokenizer loaded.'; msgEl.style.color='var(--good)';
       document.getElementById('empty-state').style.display = 'none';
     }catch(err){
       const detail = errorDetail(err);
-      log('Load failed: '+detail, true);
-      setStatus('error','load failed — see console panel');
-      loadMsg.textContent = 'Failed: '+detail; loadMsg.style.color='var(--bad)';
+      log(`[${agentKey}] Load failed: `+detail, true);
+      setPill(agentKey, 'error', agentKey+': load failed');
+      msgEl.textContent = 'Failed: '+detail; msgEl.style.color='var(--bad)';
     }finally{
-      document.getElementById('load-btn').disabled = false;
+      loadBtn.disabled = false;
     }
   }
-
-  // Errors from onnxruntime-web / the browser aren't always standard Error
-  // objects (sometimes a bare string, a DOMException with no message, or an
-  // ErrorEvent from a worker) — pull out whatever text is actually there
-  // instead of falling back to "undefined".
-  function errorDetail(err){
-    if(err===undefined || err===null) return 'unknown error (no detail provided)';
-    if(typeof err === 'number'){
-      return `${err} (raw WASM abort, not a JS error — usually a SIMD mismatch, `
-        + `an operator with no WASM kernel in onnxruntime-web, or memory exhaustion. `
-        + `Try the "Disable WASM SIMD" toggle above, or test this file on a desktop `
-        + `browser's DevTools console for a clearer message.)`;
-    }
-    if(typeof err === 'string') return err;
-    const parts = [];
-    if(err.message) parts.push(err.message);
-    if(err.name && !parts.length) parts.push(err.name);
-    if(err.reason) parts.push('reason: '+errorDetail(err.reason));
-    if(parts.length===0){
-      try{
-        const s = JSON.stringify(err, Object.getOwnPropertyNames(err));
-        if(s && s!=='{}') parts.push(s);
-      }catch(e){ /* not serializable */ }
-    }
-    if(parts.length===0){
-      try{ parts.push(String(err)); }catch(e){ parts.push('non-stringifiable error object'); }
-    }
-    return parts.join(' — ');
-  }
-
-  // Surface failures that happen outside the try/catch (e.g. a worker
-  // onnxruntime-web spawns internally failing to load) so they show up in
-  // the console panel instead of vanishing silently.
-  window.addEventListener('unhandledrejection', (e)=>{
-    log('Unhandled promise rejection: '+errorDetail(e.reason), true);
-  });
-  window.addEventListener('error', (e)=>{
-    if(e && e.message) log('Window error: '+e.message+(e.filename?(' ('+e.filename+':'+e.lineno+')'):''), true);
-  });
 
   // ================= Sampling =================
   function softmax(arr){
@@ -851,7 +951,6 @@ Assistant:</textarea>
     const vocabSize = logitsArr.length;
     const logits = Float64Array.from(logitsArr);
 
-    // repetition penalty
     if(params.repPenalty && params.repPenalty !== 1){
       const seen = new Set(generatedIds.slice(-64));
       for(const id of seen){
@@ -869,7 +968,6 @@ Assistant:</textarea>
     for(let i=0;i<vocabSize;i++) logits[i] /= params.temperature;
     let probs = softmax(logits);
 
-    // top-k
     let indices = Array.from(probs.keys());
     if(params.topK && params.topK > 0 && params.topK < vocabSize){
       indices.sort((a,b)=>probs[b]-probs[a]);
@@ -878,7 +976,6 @@ Assistant:</textarea>
       indices.sort((a,b)=>probs[b]-probs[a]);
     }
 
-    // top-p (nucleus) on the already-sorted (by prob desc) candidate set
     if(params.topP && params.topP < 1){
       let cum=0, cutoff=indices.length;
       for(let i=0;i<indices.length;i++){
@@ -904,7 +1001,7 @@ Assistant:</textarea>
   // ================= Pulse strip =================
   const pulseStrip = document.getElementById('pulse-strip');
   function clearPulse(){ pulseStrip.innerHTML=''; }
-  function pushPulse(topList){
+  function pushPulse(topList, tokenizerForDecode){
     const top = topList[0];
     const bar = document.createElement('div');
     bar.className = 'pulse-bar';
@@ -916,7 +1013,7 @@ Assistant:</textarea>
     topList.forEach((c,i)=>{
       const row = document.createElement('div');
       row.className = 't-row' + (i===0?' top':'');
-      const label = tokenizer ? (tokenizer.decode ? tokenizer.decode([c.id]) : c.id) : c.id;
+      const label = tokenizerForDecode ? tokenizerForDecode.decode([c.id]) : c.id;
       row.innerHTML = `<span>${escapeHtml(JSON.stringify(label).slice(0,14))}</span><span>${(c.p*100).toFixed(1)}%</span>`;
       tip.appendChild(row);
     });
@@ -929,16 +1026,48 @@ Assistant:</textarea>
     return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   }
 
-  // ================= Chat state / rendering =================
-  const chatScroll = document.getElementById('chat-scroll');
-  let history = []; // {role:'user'|'assistant', content:string}
+  // ================= Router =================
+  const VOCAB_PATTERNS = [
+    /\bdefine\b/i, /\bdefinition\b/i, /\bsynonym/i, /\bantonym/i,
+    /\bopposite of\b/i, /\bmean(s|ing)?\b/i, /\bpart of speech\b/i,
+    /\bfill in the blank\b/i, /\buse .* in a sentence\b/i, /\bwhat does\b.*\bmean\b/i,
+  ];
+  const DIALOGUE_PATTERNS = [
+    /\bhi\b/i, /\bhello\b/i, /\bhey\b/i, /good (morning|evening|afternoon|night)/i,
+    /how are you/i, /\bthanks?\b/i, /thank you/i, /\bbye\b/i, /goodbye/i, /see you/i,
+    /\bsorry\b/i, /what can you do/i, /who are you/i, /your name/i,
+  ];
+  function classifyIntent(text){
+    for(const re of VOCAB_PATTERNS) if(re.test(text)) return 'vocab';
+    for(const re of DIALOGUE_PATTERNS) if(re.test(text)) return 'dialogue';
+    return null;
+  }
+  function routeMessage(text){
+    const mode = document.getElementById('cfg-router-mode').value;
+    if(mode === 'force-vocab') return 'vocab';
+    if(mode === 'force-dialogue') return 'dialogue';
+    const guess = classifyIntent(text);
+    if(guess) return guess;
+    return document.getElementById('cfg-router-default').value;
+  }
 
-  function renderMessage(role, content){
+  // ================= Chat rendering =================
+  const chatScroll = document.getElementById('chat-scroll');
+
+  function renderMessage(role, content, tag){
     const wrap = document.createElement('div');
     wrap.className = 'msg ' + role;
     const roleEl = document.createElement('div');
     roleEl.className = 'role';
-    roleEl.textContent = role === 'user' ? 'you' : 'agent';
+    const roleText = document.createElement('span');
+    roleText.textContent = role === 'user' ? 'you' : 'agent';
+    roleEl.appendChild(roleText);
+    if(tag){
+      const tagEl = document.createElement('span');
+      tagEl.className = 'route-tag';
+      tagEl.textContent = tag;
+      roleEl.appendChild(tagEl);
+    }
     const bubble = document.createElement('div');
     bubble.className = 'bubble';
     bubble.textContent = content;
@@ -948,10 +1077,10 @@ Assistant:</textarea>
     return bubble;
   }
 
-  function buildPrompt(){
+  function buildPrompt(agent){
     const sys = document.getElementById('cfg-system').value.trim();
     const template = document.getElementById('cfg-template').value;
-    const historyText = history.map(m => (m.role==='user'?'User: ':'Assistant: ') + m.content).join('\n');
+    const historyText = agent.history.map(m => (m.role==='user'?'User: ':'Assistant: ') + m.content).join('\n');
     return template.replace('{system}', sys).replace('{history}', historyText);
   }
 
@@ -974,44 +1103,56 @@ Assistant:</textarea>
   stopBtn.addEventListener('click', ()=>{ stopRequested = true; });
 
   async function sendMessage(){
-    if(!modelReady || generating) return;
+    if(generating) return;
     const text = composerInput.value.trim();
     if(!text) return;
     composerInput.value=''; composerInput.style.height='auto';
-    history.push({role:'user', content:text});
+
+    const agentKey = routeMessage(text);
+    const agent = agents[agentKey];
+
     renderMessage('user', text);
 
-    const bubble = renderMessage('assistant', '');
+    if(!agent.ready){
+      renderMessage('assistant', `The ${agent.displayName} isn't loaded yet — load its model in the sidebar first.`, `→ ${agent.displayName}`)
+        .classList.add('notice');
+      return;
+    }
+
+    agent.history.push({role:'user', content:text});
+    const bubble = renderMessage('assistant', '', `→ ${agent.displayName}`);
     bubble.classList.add('streaming');
     clearPulse();
 
     generating = true; stopRequested = false;
     sendBtn.style.display='none'; stopBtn.style.display='inline-block';
-    setStatus('busy','generating…');
+    setPill(agentKey, 'busy', agentKey+': generating…');
 
     try{
-      const reply = await generate(bubble);
-      history.push({role:'assistant', content:reply});
+      const reply = await generate(agent, bubble);
+      agent.history.push({role:'assistant', content:reply});
     }catch(err){
-      log('Generation error: '+err.message, true);
-      bubble.textContent += '\n[error: '+err.message+']';
-      setStatus('error','generation failed — see console');
+      const detail = errorDetail(err);
+      log(`[${agentKey}] Generation error: `+detail, true);
+      bubble.textContent += '\n[error: '+detail+']';
+      setPill(agentKey, 'error', agentKey+': generation failed');
     }finally{
       bubble.classList.remove('streaming');
       generating = false;
       sendBtn.style.display='inline-flex'; stopBtn.style.display='none';
-      if(statusPill.className.indexOf('error')===-1) setStatus('ready','ready — '+(onnxFileName||'model'));
+      if(agents[agentKey].ready) setPill(agentKey, 'ready', agentKey+': ready');
     }
   }
 
-  async function generate(bubble){
-    const inputName = document.getElementById('cfg-input-name').value.trim();
-    const outputName = document.getElementById('cfg-output-name').value.trim();
-    const dtype = document.getElementById('cfg-dtype').value;
-    const ctxLen = parseInt(document.getElementById('cfg-ctx').value,10) || 128;
-    const useAttnMask = document.getElementById('cfg-attnmask').checked;
-    const bosVal = document.getElementById('cfg-bos').value;
-    const eosVal = document.getElementById('cfg-eos').value;
+  async function generate(agent, bubble){
+    const agentKey = agent.key;
+    const inputName = el(agentKey,'cfg-input-name').value.trim();
+    const outputName = el(agentKey,'cfg-output-name').value.trim();
+    const dtype = el(agentKey,'cfg-dtype').value;
+    const ctxLen = parseInt(el(agentKey,'cfg-ctx').value,10) || 128;
+    const useAttnMask = el(agentKey,'cfg-attnmask').checked;
+    const bosVal = el(agentKey,'cfg-bos').value;
+    const eosVal = el(agentKey,'cfg-eos').value;
     const eosId = eosVal!=='' ? parseInt(eosVal,10) : null;
     const bosId = bosVal!=='' ? parseInt(bosVal,10) : null;
 
@@ -1023,16 +1164,15 @@ Assistant:</textarea>
     };
     const maxNew = parseInt(document.getElementById('cfg-maxtok').value,10);
 
-    const prompt = buildPrompt();
-    let ids = tokenizer.encode(prompt);
+    const prompt = buildPrompt(agent);
+    let ids = agent.tokenizer.encode(prompt);
     if(bosId!==null) ids = [bosId, ...ids];
     if(ids.length > ctxLen) ids = ids.slice(ids.length - ctxLen);
 
-    const startLen = ids.length;
     let outText = '';
 
     for(let step=0; step<maxNew; step++){
-      if(stopRequested){ log('Stopped by user.'); break; }
+      if(stopRequested){ log(`[${agentKey}] Stopped by user.`); break; }
       if(ids.length > ctxLen) ids = ids.slice(ids.length - ctxLen);
 
       const seqLen = ids.length;
@@ -1049,7 +1189,7 @@ Assistant:</textarea>
         feeds['attention_mask'] = new ort.Tensor(dtype, maskData, [1, seqLen]);
       }
 
-      const results = await session.run(feeds);
+      const results = await agent.session.run(feeds);
       const outTensor = results[outputName];
       if(!outTensor) throw new Error(`Output "${outputName}" not found. Available: ${Object.keys(results).join(', ')}`);
 
@@ -1067,17 +1207,16 @@ Assistant:</textarea>
       const lastLogitsArr = Array.from(lastLogits, v=>Number(v));
 
       const { id: nextId, topList } = sampleNext(lastLogitsArr, ids, params);
-      pushPulse(topList);
+      pushPulse(topList, agent.tokenizer);
 
-      if(eosId!==null && nextId===eosId){ log('EOS reached.'); break; }
+      if(eosId!==null && nextId===eosId){ log(`[${agentKey}] EOS reached.`); break; }
 
       ids.push(nextId);
-      const piece = tokenizer.decode([nextId]);
+      const piece = agent.tokenizer.decode([nextId]);
       outText += piece;
       bubble.textContent = outText;
       chatScroll.scrollTop = chatScroll.scrollHeight;
 
-      // yield to the UI thread so Stop button / rendering stays responsive
       await new Promise(r=>setTimeout(r,0));
     }
 

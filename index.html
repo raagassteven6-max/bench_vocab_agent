@@ -1,0 +1,1251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BENCH — Multi-Agent Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.2/dist/ort.min.js"></script>
+<style>
+  :root{
+    --bg:#12151A;
+    --surface:#181C23;
+    --surface-raised:#20252E;
+    --border:#2A303B;
+    --border-soft:#232833;
+    --text:#E9EAEC;
+    --muted:#8B93A3;
+    --muted-dim:#5C6472;
+    --accent:#E3A857;
+    --accent-dim:#7A6640;
+    --accent-glow:rgba(227,168,87,0.18);
+    --good:#6FCF97;
+    --bad:#E36F6F;
+    --violet:#9C8CE3;
+    --radius:3px;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:'IBM Plex Sans',sans-serif;
+    font-size:14px;
+    display:flex;
+    height:100vh;
+    overflow:hidden;
+  }
+  ::-webkit-scrollbar{width:8px;height:8px;}
+  ::-webkit-scrollbar-track{background:transparent;}
+  ::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px;}
+  ::-webkit-scrollbar-thumb:hover{background:var(--muted-dim);}
+
+  a{color:var(--accent);}
+  button{font-family:inherit;cursor:pointer;}
+  input,select,textarea{font-family:inherit;color:var(--text);}
+
+  /* ---------- Layout shell ---------- */
+  #app{display:flex;width:100%;height:100%;}
+  #sidebar{
+    width:330px;min-width:330px;
+    background:var(--surface);
+    border-right:1px solid var(--border);
+    display:flex;flex-direction:column;
+    overflow-y:auto;
+  }
+  #main{flex:1;display:flex;flex-direction:column;min-width:0;}
+
+  /* ---------- Sidebar ---------- */
+  .brand{
+    padding:20px 18px 16px;
+    border-bottom:1px solid var(--border-soft);
+  }
+  .brand .mark{
+    font-family:'Space Grotesk',sans-serif;
+    font-weight:700;
+    font-size:20px;
+    letter-spacing:0.04em;
+    color:var(--text);
+  }
+  .brand .mark span{color:var(--accent);}
+  .brand .sub{
+    margin-top:4px;
+    font-family:'IBM Plex Mono',monospace;
+    font-size:11px;
+    color:var(--muted);
+    letter-spacing:0.03em;
+  }
+
+  .panel{border-bottom:1px solid var(--border-soft);}
+  .panel-head{
+    padding:12px 18px;
+    display:flex;align-items:center;justify-content:space-between;
+    cursor:pointer;
+    user-select:none;
+  }
+  .panel-head h3{
+    margin:0;
+    font-family:'Space Grotesk',sans-serif;
+    font-size:12px;
+    font-weight:600;
+    letter-spacing:0.08em;
+    text-transform:uppercase;
+    color:var(--muted);
+  }
+  .panel-head .chev{color:var(--muted-dim);font-size:11px;transition:transform .15s;}
+  .panel.collapsed .chev{transform:rotate(-90deg);}
+  .panel-body{padding:0 18px 16px;display:flex;flex-direction:column;gap:10px;}
+  .panel.collapsed .panel-body{display:none;}
+  .panel-head .agent-dot{width:7px;height:7px;border-radius:50%;background:var(--muted-dim);margin-right:8px;flex-shrink:0;}
+  .panel-head .agent-dot.ready{background:var(--good);box-shadow:0 0 5px var(--good);}
+  .panel-head .head-left{display:flex;align-items:center;}
+
+  .field{display:flex;flex-direction:column;gap:4px;}
+  .field label{
+    font-size:11px;color:var(--muted);
+    font-family:'IBM Plex Mono',monospace;
+  }
+  .field .hint{font-size:10.5px;color:var(--muted-dim);line-height:1.4;}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+
+  input[type=text],input[type=number],select,textarea{
+    background:var(--surface-raised);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    padding:7px 9px;
+    font-size:12.5px;
+    outline:none;
+  }
+  input[type=text]:focus,input[type=number]:focus,select:focus,textarea:focus{
+    border-color:var(--accent-dim);
+    box-shadow:0 0 0 2px var(--accent-glow);
+  }
+  input[type=range]{width:100%;accent-color:var(--accent);}
+
+  .filebtn{
+    display:flex;align-items:center;gap:8px;
+    background:var(--surface-raised);
+    border:1px dashed var(--border);
+    border-radius:var(--radius);
+    padding:9px;
+    font-size:12px;color:var(--muted);
+  }
+  .filebtn.loaded{border-style:solid;border-color:var(--good);color:var(--text);}
+  .filebtn input{display:none;}
+  .filebtn .status-dot{
+    width:6px;height:6px;border-radius:50%;
+    background:var(--muted-dim);flex-shrink:0;
+  }
+  .filebtn.loaded .status-dot{background:var(--good);}
+
+  .btn{
+    background:var(--accent);
+    color:#1A140A;
+    border:none;
+    border-radius:var(--radius);
+    padding:9px 14px;
+    font-weight:600;
+    font-size:12.5px;
+    letter-spacing:0.02em;
+    transition:filter .12s;
+  }
+  .btn:hover{filter:brightness(1.08);}
+  .btn:disabled{background:var(--border);color:var(--muted-dim);cursor:not-allowed;}
+  .btn.secondary{
+    background:transparent;border:1px solid var(--border);color:var(--muted);
+  }
+  .btn.secondary:hover{border-color:var(--muted-dim);color:var(--text);}
+  .btn.danger{background:var(--bad);color:#2A0E0E;}
+
+  .toggle-row{display:flex;align-items:center;justify-content:space-between;}
+  .toggle-row label{font-size:11px;color:var(--muted);font-family:'IBM Plex Mono',monospace;}
+
+  .url-block{border-top:1px solid var(--border-soft);margin-top:4px;padding-top:12px;display:flex;flex-direction:column;gap:10px;}
+
+  /* ---------- Main / chat header ---------- */
+  #chat-header{
+    padding:12px 24px;
+    border-bottom:1px solid var(--border);
+    display:flex;align-items:center;justify-content:space-between;
+    background:var(--surface);
+    flex-shrink:0;
+    gap:12px;
+    flex-wrap:wrap;
+  }
+  #chat-header .agent{display:flex;align-items:center;gap:10px;}
+  #chat-header .agent-name{
+    font-family:'Space Grotesk',sans-serif;
+    font-weight:600;font-size:14.5px;
+  }
+  .pills{display:flex;gap:8px;flex-wrap:wrap;}
+  .status-pill{
+    display:flex;align-items:center;gap:6px;
+    font-family:'IBM Plex Mono',monospace;
+    font-size:10.5px;color:var(--muted);
+    padding:4px 10px;border:1px solid var(--border);border-radius:20px;
+    white-space:nowrap;
+  }
+  .status-pill .dot{width:6px;height:6px;border-radius:50%;background:var(--muted-dim);flex-shrink:0;}
+  .status-pill.ready .dot{background:var(--good);box-shadow:0 0 6px var(--good);}
+  .status-pill.busy .dot{background:var(--accent);box-shadow:0 0 6px var(--accent);animation:pulse 1s infinite;}
+  .status-pill.error .dot{background:var(--bad);}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.3;}}
+
+  #sidebar-toggle{display:none;}
+
+  /* ---------- Chat scroll area ---------- */
+  #chat-scroll{
+    flex:1;overflow-y:auto;
+    padding:24px;
+    display:flex;flex-direction:column;gap:16px;
+  }
+  .empty-state{
+    margin:auto;
+    max-width:440px;
+    text-align:center;
+    color:var(--muted);
+  }
+  .empty-state .glyph{
+    font-family:'Space Grotesk',sans-serif;
+    font-size:34px;font-weight:700;color:var(--border);
+    margin-bottom:14px;
+  }
+  .empty-state h4{
+    font-family:'Space Grotesk',sans-serif;
+    color:var(--text);font-size:15px;margin:0 0 8px;
+  }
+  .empty-state p{font-size:12.5px;line-height:1.6;margin:0;}
+  .empty-state ol{
+    text-align:left;font-size:12px;color:var(--muted);
+    line-height:1.9;margin:14px 0 0;padding-left:18px;
+  }
+
+  .msg{max-width:78%;display:flex;flex-direction:column;gap:4px;}
+  .msg.user{align-self:flex-end;align-items:flex-end;}
+  .msg.assistant{align-self:flex-start;align-items:flex-start;}
+  .msg .role{
+    font-family:'IBM Plex Mono',monospace;font-size:10px;
+    color:var(--muted-dim);letter-spacing:0.06em;text-transform:uppercase;
+    display:flex;align-items:center;gap:8px;
+  }
+  .msg .route-tag{
+    font-family:'IBM Plex Mono',monospace;font-size:9.5px;
+    color:var(--violet);border:1px solid var(--violet);border-radius:10px;
+    padding:1px 7px;letter-spacing:0.02em;text-transform:none;
+  }
+  .msg .bubble{
+    padding:10px 14px;border-radius:10px;
+    font-size:13.5px;line-height:1.55;
+    white-space:pre-wrap;word-wrap:break-word;
+  }
+  .msg.user .bubble{background:var(--accent);color:#1A140A;border-bottom-right-radius:2px;}
+  .msg.assistant .bubble{background:var(--surface-raised);border:1px solid var(--border-soft);border-bottom-left-radius:2px;}
+  .msg.assistant .bubble.streaming::after{
+    content:'▍';color:var(--accent);animation:pulse .8s infinite;
+  }
+  .msg.assistant .bubble.notice{color:var(--muted);font-style:italic;}
+
+  /* ---------- Token pulse strip ---------- */
+  #pulse-wrap{
+    border-top:1px solid var(--border);
+    background:var(--surface);
+    padding:8px 24px 4px;
+    flex-shrink:0;
+  }
+  #pulse-label{
+    font-family:'IBM Plex Mono',monospace;font-size:10px;color:var(--muted-dim);
+    letter-spacing:0.08em;text-transform:uppercase;margin-bottom:6px;
+  }
+  #pulse-strip{
+    display:flex;align-items:flex-end;gap:2px;height:34px;
+    overflow-x:auto;overflow-y:hidden;
+  }
+  .pulse-bar{
+    flex-shrink:0;width:5px;min-width:5px;
+    background:var(--accent-dim);
+    border-radius:1px 1px 0 0;
+    position:relative;
+    transition:height .1s;
+  }
+  .pulse-bar:hover{background:var(--accent);}
+  .pulse-bar:hover .pulse-tip{display:block;}
+  .pulse-tip{
+    display:none;position:absolute;bottom:100%;left:50%;
+    transform:translateX(-50%);margin-bottom:6px;
+    background:#000;border:1px solid var(--border);
+    padding:6px 8px;border-radius:4px;white-space:nowrap;
+    font-family:'IBM Plex Mono',monospace;font-size:10.5px;z-index:5;
+  }
+  .pulse-tip .t-row{display:flex;justify-content:space-between;gap:10px;color:var(--muted);}
+  .pulse-tip .t-row.top{color:var(--accent);}
+
+  /* ---------- Composer ---------- */
+  #composer{
+    padding:14px 24px 18px;
+    background:var(--surface);
+    flex-shrink:0;
+  }
+  #composer-inner{
+    display:flex;gap:10px;align-items:flex-end;
+    background:var(--surface-raised);
+    border:1px solid var(--border);
+    border-radius:8px;padding:8px 8px 8px 14px;
+  }
+  #composer-inner:focus-within{border-color:var(--accent-dim);box-shadow:0 0 0 2px var(--accent-glow);}
+  #composer textarea{
+    flex:1;border:none;background:transparent;resize:none;
+    outline:none;font-size:13.5px;line-height:1.5;
+    max-height:160px;padding:6px 0;
+  }
+  #composer-hint{
+    margin-top:6px;font-family:'IBM Plex Mono',monospace;
+    font-size:10.5px;color:var(--muted-dim);
+  }
+  #send-btn{width:36px;height:36px;padding:0;border-radius:6px;flex-shrink:0;
+    display:flex;align-items:center;justify-content:center;font-size:15px;}
+  #stop-btn{display:none;}
+
+  /* ---------- Responsive ---------- */
+  @media(max-width:820px){
+    #sidebar{
+      position:fixed;left:0;top:0;bottom:0;z-index:20;
+      transform:translateX(-100%);transition:transform .18s;
+      box-shadow:20px 0 40px rgba(0,0,0,0.4);
+    }
+    #sidebar.open{transform:translateX(0);}
+    #sidebar-toggle{
+      display:flex;align-items:center;justify-content:center;
+      width:32px;height:32px;background:transparent;border:1px solid var(--border);
+      border-radius:6px;color:var(--muted);margin-right:6px;
+    }
+    .msg{max-width:90%;}
+  }
+  @media(prefers-reduced-motion:reduce){
+    *{animation:none !important;transition:none !important;}
+  }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ============ SIDEBAR ============ -->
+  <aside id="sidebar">
+    <div class="brand">
+      <div class="mark">BENCH<span>_</span></div>
+      <div class="sub">local model console · multi-agent</div>
+    </div>
+
+    <!-- Routing -->
+    <div class="panel" data-panel>
+      <div class="panel-head" data-toggle><h3>Routing</h3><span class="chev">▾</span></div>
+      <div class="panel-body">
+        <div class="field">
+          <label>Router mode</label>
+          <select id="cfg-router-mode">
+            <option value="auto">Auto (keyword match)</option>
+            <option value="force-vocab">Force → Vocab Agent</option>
+            <option value="force-dialogue">Force → Dialogue Agent</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Default agent (when uncertain)</label>
+          <select id="cfg-router-default">
+            <option value="dialogue" selected>Dialogue Agent</option>
+            <option value="vocab">Vocab Agent</option>
+          </select>
+        </div>
+        <div class="hint">
+          Auto mode looks for vocab-style phrasing ("define", "synonym", "opposite of", "mean") vs.
+          conversational phrasing ("hi", "thanks", "how are you") and routes accordingly. Anything
+          it can't classify falls to the default agent above. Every reply is tagged with which agent handled it.
+        </div>
+      </div>
+    </div>
+
+    <!-- Vocab Agent files -->
+    <div class="panel" data-panel data-agent-panel="vocab">
+      <div class="panel-head" data-toggle>
+        <div class="head-left"><span class="agent-dot" id="vocab-dot"></span><h3>Vocab Agent</h3></div>
+        <span class="chev">▾</span>
+      </div>
+      <div class="panel-body">
+        <div class="field">
+          <label>ONNX model (.onnx)</label>
+          <label class="filebtn" id="vocab-onnx-filebtn">
+            <span class="status-dot"></span>
+            <span id="vocab-onnx-filename">Choose model.onnx…</span>
+            <input type="file" id="vocab-onnx-input" accept=".onnx">
+          </label>
+        </div>
+        <div class="field">
+          <label>Tokenizer type</label>
+          <select id="vocab-tok-type">
+            <option value="bpe">Byte-level BPE (tokenizer.json)</option>
+            <option value="word">Word-level (vocab.json)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label id="vocab-tok-file-label">Tokenizer file</label>
+          <label class="filebtn" id="vocab-tok-filebtn">
+            <span class="status-dot"></span>
+            <span id="vocab-tok-filename">Choose tokenizer.json…</span>
+            <input type="file" id="vocab-tok-input" accept=".json">
+          </label>
+        </div>
+        <button class="btn" id="vocab-load-btn">Load Vocab Agent</button>
+        <div class="hint" id="vocab-load-msg"></div>
+
+        <div class="url-block">
+          <div class="hint">— or load directly from URL —</div>
+          <div class="field"><label>Model URL</label><input type="text" id="vocab-url-onnx" value="./vocab_agent.onnx"></div>
+          <div class="field"><label>Tokenizer URL</label><input type="text" id="vocab-url-tok" value="./tokenizer.json"></div>
+          <button class="btn secondary" id="vocab-fetch-url-btn">Fetch &amp; load from URL</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Vocab Agent Graph I/O -->
+    <div class="panel collapsed" data-panel>
+      <div class="panel-head" data-toggle><h3>Vocab Agent — Graph I/O</h3><span class="chev">▾</span></div>
+      <div class="panel-body">
+        <div class="row2">
+          <div class="field"><label>Input tensor name</label><input type="text" id="vocab-cfg-input-name" value="input_ids"></div>
+          <div class="field"><label>Output tensor name</label><input type="text" id="vocab-cfg-output-name" value="logits"></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label>Input dtype</label>
+            <select id="vocab-cfg-dtype"><option value="int64">int64</option><option value="int32">int32</option></select>
+          </div>
+          <div class="field"><label>Context length</label><input type="number" id="vocab-cfg-ctx" value="128" min="8"></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label>BOS token id</label><input type="number" id="vocab-cfg-bos" placeholder="none"></div>
+          <div class="field"><label>EOS token id</label><input type="number" id="vocab-cfg-eos" value="0"></div>
+        </div>
+        <div class="toggle-row"><label>Send attention_mask input</label><input type="checkbox" id="vocab-cfg-attnmask"></div>
+        <div class="toggle-row"><label>Disable WASM SIMD</label><input type="checkbox" id="vocab-cfg-nosimd"></div>
+      </div>
+    </div>
+
+    <!-- Dialogue Agent files -->
+    <div class="panel" data-panel data-agent-panel="dialogue">
+      <div class="panel-head" data-toggle>
+        <div class="head-left"><span class="agent-dot" id="dialogue-dot"></span><h3>Dialogue Agent</h3></div>
+        <span class="chev">▾</span>
+      </div>
+      <div class="panel-body">
+        <div class="field">
+          <label>ONNX model (.onnx)</label>
+          <label class="filebtn" id="dialogue-onnx-filebtn">
+            <span class="status-dot"></span>
+            <span id="dialogue-onnx-filename">Choose model.onnx…</span>
+            <input type="file" id="dialogue-onnx-input" accept=".onnx">
+          </label>
+        </div>
+        <div class="field">
+          <label>Tokenizer type</label>
+          <select id="dialogue-tok-type">
+            <option value="bpe">Byte-level BPE (tokenizer.json)</option>
+            <option value="word">Word-level (vocab.json)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label id="dialogue-tok-file-label">Tokenizer file</label>
+          <label class="filebtn" id="dialogue-tok-filebtn">
+            <span class="status-dot"></span>
+            <span id="dialogue-tok-filename">Choose tokenizer.json…</span>
+            <input type="file" id="dialogue-tok-input" accept=".json">
+          </label>
+        </div>
+        <button class="btn" id="dialogue-load-btn">Load Dialogue Agent</button>
+        <div class="hint" id="dialogue-load-msg"></div>
+
+        <div class="url-block">
+          <div class="hint">— or load directly from URL —</div>
+          <div class="field"><label>Model URL</label><input type="text" id="dialogue-url-onnx" value="./dialogue_agent.onnx"></div>
+          <div class="field"><label>Tokenizer URL</label><input type="text" id="dialogue-url-tok" value="./dialogue_tokenizer.json"></div>
+          <button class="btn secondary" id="dialogue-fetch-url-btn">Fetch &amp; load from URL</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Dialogue Agent Graph I/O -->
+    <div class="panel collapsed" data-panel>
+      <div class="panel-head" data-toggle><h3>Dialogue Agent — Graph I/O</h3><span class="chev">▾</span></div>
+      <div class="panel-body">
+        <div class="row2">
+          <div class="field"><label>Input tensor name</label><input type="text" id="dialogue-cfg-input-name" value="input_ids"></div>
+          <div class="field"><label>Output tensor name</label><input type="text" id="dialogue-cfg-output-name" value="logits"></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label>Input dtype</label>
+            <select id="dialogue-cfg-dtype"><option value="int64">int64</option><option value="int32">int32</option></select>
+          </div>
+          <div class="field"><label>Context length</label><input type="number" id="dialogue-cfg-ctx" value="128" min="8"></div>
+        </div>
+        <div class="row2">
+          <div class="field"><label>BOS token id</label><input type="number" id="dialogue-cfg-bos" placeholder="none"></div>
+          <div class="field"><label>EOS token id</label><input type="number" id="dialogue-cfg-eos" value="0"></div>
+        </div>
+        <div class="toggle-row"><label>Send attention_mask input</label><input type="checkbox" id="dialogue-cfg-attnmask"></div>
+        <div class="toggle-row"><label>Disable WASM SIMD</label><input type="checkbox" id="dialogue-cfg-nosimd"></div>
+      </div>
+    </div>
+
+    <!-- Prompt template (shared — both agents were trained on the same User:/Assistant: shape) -->
+    <div class="panel collapsed" data-panel>
+      <div class="panel-head" data-toggle><h3>Prompt template</h3><span class="chev">▾</span></div>
+      <div class="panel-body">
+        <div class="field">
+          <label>System prompt</label>
+          <textarea id="cfg-system" rows="2" placeholder="optional"></textarea>
+        </div>
+        <div class="field">
+          <label>Template ({history} = formatted turns)</label>
+          <textarea id="cfg-template" rows="3">{system}
+{history}
+Assistant:</textarea>
+          <div class="hint">Shared by both agents — they were trained on the same User:/Assistant: format. Each agent keeps its own separate conversation history, so switching agents mid-chat won't feed one model's context into the other.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Generation params (shared) -->
+    <div class="panel" data-panel>
+      <div class="panel-head" data-toggle><h3>Generation</h3><span class="chev">▾</span></div>
+      <div class="panel-body">
+        <div class="field">
+          <label>Max new tokens: <span id="v-maxtok">80</span></label>
+          <input type="range" id="cfg-maxtok" min="4" max="512" value="80">
+        </div>
+        <div class="field">
+          <label>Temperature: <span id="v-temp">0.8</span></label>
+          <input type="range" id="cfg-temp" min="0" max="2" step="0.05" value="0.8">
+        </div>
+        <div class="row2">
+          <div class="field"><label>Top-k: <span id="v-topk">40</span></label>
+            <input type="range" id="cfg-topk" min="0" max="200" value="40"></div>
+          <div class="field"><label>Top-p: <span id="v-topp">0.95</span></label>
+            <input type="range" id="cfg-topp" min="0" max="1" step="0.01" value="0.95"></div>
+        </div>
+        <div class="field">
+          <label>Repetition penalty: <span id="v-reppen">1.15</span></label>
+          <input type="range" id="cfg-reppen" min="1" max="2" step="0.01" value="1.15">
+        </div>
+      </div>
+    </div>
+
+    <!-- Console log -->
+    <div class="panel collapsed" data-panel>
+      <div class="panel-head" data-toggle><h3>Console</h3><span class="chev">▾</span></div>
+      <div class="panel-body">
+        <div id="console-log" style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:var(--muted);line-height:1.6;max-height:180px;overflow-y:auto;white-space:pre-wrap;"></div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ============ MAIN ============ -->
+  <main id="main">
+    <div id="chat-header">
+      <div class="agent">
+        <button id="sidebar-toggle">☰</button>
+        <span class="agent-name">Multi-Agent Console</span>
+      </div>
+      <div class="pills">
+        <div class="status-pill" id="pill-vocab"><span class="dot"></span><span>vocab: not loaded</span></div>
+        <div class="status-pill" id="pill-dialogue"><span class="dot"></span><span>dialogue: not loaded</span></div>
+      </div>
+    </div>
+
+    <div id="chat-scroll">
+      <div class="empty-state" id="empty-state">
+        <div class="glyph">////</div>
+        <h4>Nothing loaded yet</h4>
+        <p>This console runs entirely in your browser, routing each message between two models you trained and exported yourself.</p>
+        <ol>
+          <li>Load the <b>Vocab Agent</b> and/or <b>Dialogue Agent</b> in the sidebar (either works alone too)</li>
+          <li>Check each agent's Graph I/O names match your export</li>
+          <li>Chat below — each reply is tagged with which agent handled it</li>
+          <li>Use Router mode to force everything to one agent while testing</li>
+        </ol>
+      </div>
+    </div>
+
+    <div id="pulse-wrap">
+      <div id="pulse-label">token pulse — top candidate confidence</div>
+      <div id="pulse-strip"></div>
+    </div>
+
+    <div id="composer">
+      <div id="composer-inner">
+        <textarea id="composer-input" rows="1" placeholder="Message the agents…"></textarea>
+        <button class="btn" id="send-btn">↑</button>
+        <button class="btn danger" id="stop-btn">Stop</button>
+      </div>
+      <div id="composer-hint">Enter to send · Shift+Enter for newline · runs 100% locally in-browser</div>
+    </div>
+  </main>
+
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  // ================= Utility: console log =================
+  const logEl = document.getElementById('console-log');
+  function log(msg, isErr){
+    const line = document.createElement('div');
+    if(isErr) line.style.color = 'var(--bad)';
+    const t = new Date().toLocaleTimeString();
+    line.textContent = `[${t}] ${msg}`;
+    logEl.appendChild(line);
+    logEl.scrollTop = logEl.scrollHeight;
+    if(isErr) console.error(msg); else console.log(msg);
+  }
+
+  // ================= Panel collapse =================
+  document.querySelectorAll('[data-toggle]').forEach(head=>{
+    head.addEventListener('click', ()=> head.closest('[data-panel]').classList.toggle('collapsed'));
+  });
+  const sidebar = document.getElementById('sidebar');
+  document.getElementById('sidebar-toggle').addEventListener('click', ()=> sidebar.classList.toggle('open'));
+
+  // ================= Range value labels (shared generation params) =================
+  const bindRange = (id, labelId, fmt) => {
+    const el = document.getElementById(id), lab = document.getElementById(labelId);
+    const update = () => lab.textContent = fmt ? fmt(el.value) : el.value;
+    el.addEventListener('input', update); update();
+  };
+  bindRange('cfg-maxtok','v-maxtok');
+  bindRange('cfg-temp','v-temp', v=>parseFloat(v).toFixed(2));
+  bindRange('cfg-topk','v-topk');
+  bindRange('cfg-topp','v-topp', v=>parseFloat(v).toFixed(2));
+  bindRange('cfg-reppen','v-reppen', v=>parseFloat(v).toFixed(2));
+
+  function errorDetail(err){
+    if(err===undefined || err===null) return 'unknown error (no detail provided)';
+    if(typeof err === 'number'){
+      return `${err} (raw WASM abort, not a JS error — usually a SIMD mismatch, `
+        + `an operator with no WASM kernel in onnxruntime-web, or memory exhaustion. `
+        + `Try the "Disable WASM SIMD" toggle, or test this file on a desktop `
+        + `browser's DevTools console for a clearer message.)`;
+    }
+    if(typeof err === 'string') return err;
+    const parts = [];
+    if(err.message) parts.push(err.message);
+    if(err.name && !parts.length) parts.push(err.name);
+    if(err.reason) parts.push('reason: '+errorDetail(err.reason));
+    if(parts.length===0){
+      try{
+        const s = JSON.stringify(err, Object.getOwnPropertyNames(err));
+        if(s && s!=='{}') parts.push(s);
+      }catch(e){ /* not serializable */ }
+    }
+    if(parts.length===0){
+      try{ parts.push(String(err)); }catch(e){ parts.push('non-stringifiable error object'); }
+    }
+    return parts.join(' — ');
+  }
+  window.addEventListener('unhandledrejection', (e)=> log('Unhandled promise rejection: '+errorDetail(e.reason), true));
+  window.addEventListener('error', (e)=>{
+    if(e && e.message) log('Window error: '+e.message+(e.filename?(' ('+e.filename+':'+e.lineno+')'):''), true);
+  });
+
+  // ================= Byte-level BPE tokenizer =================
+  function buildByteMaps(){
+    const bs = [];
+    for(let i=33;i<=126;i++) bs.push(i);
+    for(let i=161;i<=172;i++) bs.push(i);
+    for(let i=174;i<=255;i++) bs.push(i);
+    const cs = bs.slice();
+    let n = 0;
+    for(let b=0;b<256;b++){
+      if(!bs.includes(b)){ bs.push(b); cs.push(256+n); n++; }
+    }
+    const byteToUnicode = {}, unicodeToByte = {};
+    for(let i=0;i<bs.length;i++){
+      const ch = String.fromCharCode(cs[i]);
+      byteToUnicode[bs[i]] = ch;
+      unicodeToByte[ch] = bs[i];
+    }
+    return {byteToUnicode, unicodeToByte};
+  }
+
+  const PRETOKENIZE_REGEX = /'s|'t|'re|'ve|'m|'ll|'d| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+/gu;
+
+  function getPairs(wordArr){
+    const pairs = new Set();
+    for(let i=0;i<wordArr.length-1;i++) pairs.add(wordArr[i]+'\u0001'+wordArr[i+1]);
+    return pairs;
+  }
+
+  class BPETokenizer{
+    constructor(tokJson){
+      const model = tokJson.model || tokJson;
+      const vocabObj = model.vocab || tokJson.vocab;
+      if(!vocabObj) throw new Error('tokenizer.json has no model.vocab');
+      this.vocab = new Map(Object.entries(vocabObj));
+      this.idToToken = new Map();
+      for(const [tok,id] of this.vocab.entries()) this.idToToken.set(id, tok);
+
+      const merges = model.merges || tokJson.merges || [];
+      this.bpeRanks = new Map();
+      merges.forEach((m,i)=>{
+        let a,b;
+        if(Array.isArray(m)) [a,b]=m; else [a,b]=String(m).split(' ');
+        this.bpeRanks.set(a+'\u0001'+b, i);
+      });
+
+      const maps = buildByteMaps();
+      this.byteToUnicode = maps.byteToUnicode;
+      this.unicodeToByte = maps.unicodeToByte;
+      this.cache = new Map();
+
+      this.unkId = null;
+      if(tokJson.added_tokens){
+        for(const t of tokJson.added_tokens){
+          if(t.special && /unk/i.test(t.content||'')) this.unkId = t.id;
+        }
+      }
+    }
+
+    bpe(token){
+      if(this.cache.has(token)) return this.cache.get(token);
+      let word = Array.from(token);
+      if(word.length<=1){ this.cache.set(token, word); return word; }
+      let pairs = getPairs(word);
+      while(pairs.size){
+        let minPair=null, minRank=Infinity;
+        for(const p of pairs){
+          const r = this.bpeRanks.get(p);
+          if(r!==undefined && r<minRank){ minRank=r; minPair=p; }
+        }
+        if(minPair===null) break;
+        const [first,second] = minPair.split('\u0001');
+        const newWord=[]; let i=0;
+        while(i<word.length){
+          const j = word.indexOf(first, i);
+          if(j===-1){ newWord.push(...word.slice(i)); break; }
+          newWord.push(...word.slice(i,j));
+          if(j<word.length-1 && word[j+1]===second){ newWord.push(first+second); i=j+2; }
+          else{ newWord.push(word[j]); i=j+1; }
+        }
+        word=newWord;
+        if(word.length===1) break;
+        pairs=getPairs(word);
+      }
+      this.cache.set(token, word);
+      return word;
+    }
+
+    encode(text){
+      const ids=[];
+      const chunks = text.match(PRETOKENIZE_REGEX) || [];
+      const enc = new TextEncoder();
+      for(const chunk of chunks){
+        const bytes = enc.encode(chunk);
+        let mapped='';
+        for(const b of bytes) mapped += this.byteToUnicode[b];
+        const bpeToks = this.bpe(mapped);
+        for(const t of bpeToks){
+          if(this.vocab.has(t)) ids.push(this.vocab.get(t));
+          else if(this.unkId!==null) ids.push(this.unkId);
+        }
+      }
+      return ids;
+    }
+
+    decodeToken(id){
+      const tok = this.idToToken.get(id);
+      if(tok===undefined) return '';
+      let bytes=[];
+      for(const ch of tok){
+        const b = this.unicodeToByte[ch];
+        if(b!==undefined) bytes.push(b);
+      }
+      return new TextDecoder('utf-8',{fatal:false}).decode(new Uint8Array(bytes));
+    }
+
+    decode(ids){
+      return ids.map(id=>this.decodeToken(id)).join('');
+    }
+  }
+
+  class WordTokenizer{
+    constructor(vocabJson){
+      this.vocab = new Map(Object.entries(vocabJson));
+      this.idToToken = new Map();
+      for(const [tok,id] of this.vocab.entries()) this.idToToken.set(id, tok);
+      this.unkId = this.vocab.has('<unk>') ? this.vocab.get('<unk>') : null;
+    }
+    encode(text){
+      const words = text.match(/\w+|[^\w\s]/g) || [];
+      const ids=[];
+      for(let w of words){
+        const key = this.vocab.has(w) ? w : w.toLowerCase();
+        if(this.vocab.has(key)) ids.push(this.vocab.get(key));
+        else if(this.unkId!==null) ids.push(this.unkId);
+      }
+      return ids;
+    }
+    decode(ids){
+      const toks = ids.map(id=>this.idToToken.get(id)).filter(t=>t!==undefined);
+      let out='';
+      for(const t of toks){
+        if(/^[.,!?;:'")\]]/.test(t) || out==='') out += t;
+        else out += ' ' + t;
+      }
+      return out;
+    }
+  }
+
+  // ================= Agent state =================
+  function makeAgent(key, displayName){
+    return {
+      key, displayName,
+      session: null, tokenizer: null, ready: false,
+      onnxBuffer: null, tokRaw: null,
+      onnxFileName: null, tokFileName: null,
+      history: [], // {role:'user'|'assistant', content:string} — this agent's own context only
+    };
+  }
+  const agents = {
+    vocab: makeAgent('vocab', 'Vocab Agent'),
+    dialogue: makeAgent('dialogue', 'Dialogue Agent'),
+  };
+
+  function el(agentKey, suffix){ return document.getElementById(agentKey+'-'+suffix); }
+
+  function setPill(agentKey, mode, text){
+    const pill = document.getElementById('pill-'+agentKey);
+    pill.className = 'status-pill ' + mode;
+    pill.querySelector('span:last-child').textContent = text;
+    document.getElementById(agentKey+'-dot').classList.toggle('ready', mode==='ready' || mode==='busy');
+  }
+
+  // ---- Wire up file pickers / tokenizer type / load / URL fetch, per agent ----
+  function setupAgentPanel(agentKey){
+    const agent = agents[agentKey];
+
+    el(agentKey,'onnx-input').addEventListener('change', async (e)=>{
+      const f = e.target.files[0]; if(!f) return;
+      agent.onnxFileName = f.name;
+      agent.onnxBuffer = await f.arrayBuffer();
+      el(agentKey,'onnx-filename').textContent = f.name;
+      el(agentKey,'onnx-filebtn').classList.add('loaded');
+      log(`[${agentKey}] Read ${f.name} (${(agent.onnxBuffer.byteLength/1e6).toFixed(2)} MB)`);
+    });
+
+    el(agentKey,'tok-input').addEventListener('change', async (e)=>{
+      const f = e.target.files[0]; if(!f) return;
+      agent.tokFileName = f.name;
+      const text = await f.text();
+      try{ agent.tokRaw = JSON.parse(text); }
+      catch(err){ log(`[${agentKey}] Tokenizer file is not valid JSON: `+err.message, true); return; }
+      el(agentKey,'tok-filename').textContent = f.name;
+      el(agentKey,'tok-filebtn').classList.add('loaded');
+      log(`[${agentKey}] Parsed tokenizer file ${f.name}`);
+    });
+
+    el(agentKey,'tok-type').addEventListener('change', ()=>{
+      const isBpe = el(agentKey,'tok-type').value === 'bpe';
+      el(agentKey,'tok-file-label').textContent = isBpe ? 'Tokenizer file' : 'Vocab file';
+      el(agentKey,'tok-filename').textContent = isBpe ? 'Choose tokenizer.json…' : 'Choose vocab.json…';
+    });
+
+    el(agentKey,'load-btn').addEventListener('click', ()=> loadAgent(agentKey));
+
+    el(agentKey,'fetch-url-btn').addEventListener('click', async ()=>{
+      const onnxUrl = el(agentKey,'url-onnx').value.trim();
+      const tokUrl = el(agentKey,'url-tok').value.trim();
+      const msgEl = el(agentKey,'load-msg');
+      if(!onnxUrl || !tokUrl){ msgEl.textContent = 'Enter both URLs first.'; msgEl.style.color='var(--bad)'; return; }
+      msgEl.textContent = 'Fetching…'; msgEl.style.color='var(--muted)';
+      try{
+        log(`[${agentKey}] Fetching model from `+onnxUrl);
+        const onnxRes = await fetch(onnxUrl);
+        if(!onnxRes.ok) throw new Error(`Model fetch failed: HTTP ${onnxRes.status} for ${onnxUrl}`);
+        agent.onnxBuffer = await onnxRes.arrayBuffer();
+        agent.onnxFileName = onnxUrl.split('/').pop();
+        el(agentKey,'onnx-filename').textContent = agent.onnxFileName;
+        el(agentKey,'onnx-filebtn').classList.add('loaded');
+        log(`[${agentKey}] Fetched ${agent.onnxFileName} (${(agent.onnxBuffer.byteLength/1e6).toFixed(2)} MB)`);
+
+        log(`[${agentKey}] Fetching tokenizer from `+tokUrl);
+        const tokRes = await fetch(tokUrl);
+        if(!tokRes.ok) throw new Error(`Tokenizer fetch failed: HTTP ${tokRes.status} for ${tokUrl}`);
+        agent.tokRaw = await tokRes.json();
+        agent.tokFileName = tokUrl.split('/').pop();
+        el(agentKey,'tok-filename').textContent = agent.tokFileName;
+        el(agentKey,'tok-filebtn').classList.add('loaded');
+        log(`[${agentKey}] Fetched tokenizer ${agent.tokFileName}`);
+
+        await loadAgent(agentKey);
+      }catch(err){
+        const detail = errorDetail(err);
+        log(`[${agentKey}] URL fetch failed: `+detail, true);
+        msgEl.textContent = 'Fetch failed: '+detail; msgEl.style.color='var(--bad)';
+      }
+    });
+  }
+  setupAgentPanel('vocab');
+  setupAgentPanel('dialogue');
+
+  async function loadAgent(agentKey){
+    const agent = agents[agentKey];
+    const msgEl = el(agentKey,'load-msg');
+    const loadBtn = el(agentKey,'load-btn');
+
+    if(!agent.onnxBuffer){ msgEl.textContent = 'Choose an .onnx file first.'; msgEl.style.color='var(--bad)'; return; }
+    if(!agent.tokRaw){ msgEl.textContent = 'Choose a tokenizer file first.'; msgEl.style.color='var(--bad)'; return; }
+
+    setPill(agentKey, 'busy', agentKey+': loading…');
+    msgEl.textContent = 'Loading…'; msgEl.style.color='var(--muted)';
+    loadBtn.disabled = true;
+
+    try{
+      if(typeof ort === 'undefined'){
+        throw new Error('onnxruntime-web did not load from the CDN — check your internet connection and reload the page.');
+      }
+      ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.19.2/dist/';
+      ort.env.wasm.numThreads = 1;
+      ort.env.wasm.proxy = false;
+      ort.env.wasm.simd = !el(agentKey,'cfg-nosimd').checked;
+
+      log(`[${agentKey}] Creating ONNX Runtime session…`);
+      agent.session = await ort.InferenceSession.create(agent.onnxBuffer, { executionProviders: ['wasm'] });
+      log(`[${agentKey}] Session ready. Inputs: `+agent.session.inputNames.join(', ')+' | Outputs: '+agent.session.outputNames.join(', '));
+
+      const tokType = el(agentKey,'tok-type').value;
+      agent.tokenizer = tokType === 'bpe' ? new BPETokenizer(agent.tokRaw) : new WordTokenizer(agent.tokRaw);
+      log(`[${agentKey}] Tokenizer ready (${agent.tokenizer.vocab.size} tokens, mode=${tokType})`);
+
+      agent.ready = true;
+      setPill(agentKey, 'ready', agentKey+': ready');
+      msgEl.textContent = 'Model and tokenizer loaded.'; msgEl.style.color='var(--good)';
+      document.getElementById('empty-state').style.display = 'none';
+    }catch(err){
+      const detail = errorDetail(err);
+      log(`[${agentKey}] Load failed: `+detail, true);
+      setPill(agentKey, 'error', agentKey+': load failed');
+      msgEl.textContent = 'Failed: '+detail; msgEl.style.color='var(--bad)';
+    }finally{
+      loadBtn.disabled = false;
+    }
+  }
+
+  // ================= Sampling =================
+  function softmax(arr){
+    let max=-Infinity; for(const v of arr) if(v>max) max=v;
+    const exps = new Float64Array(arr.length);
+    let sum=0;
+    for(let i=0;i<arr.length;i++){ exps[i]=Math.exp(arr[i]-max); sum+=exps[i]; }
+    for(let i=0;i<exps.length;i++) exps[i]/=sum;
+    return exps;
+  }
+
+  function sampleNext(logitsArr, generatedIds, params){
+    const vocabSize = logitsArr.length;
+    const logits = Float64Array.from(logitsArr);
+
+    if(params.repPenalty && params.repPenalty !== 1){
+      const seen = new Set(generatedIds.slice(-64));
+      for(const id of seen){
+        if(id<0||id>=vocabSize) continue;
+        logits[id] = logits[id] > 0 ? logits[id]/params.repPenalty : logits[id]*params.repPenalty;
+      }
+    }
+
+    // No-repeat-trigram: if the last 2 generated tokens have appeared together
+    // before, ban whatever token followed them last time. Stops short-phrase
+    // loops ("a person who is a person who is...") that repPenalty alone
+    // doesn't reliably catch when top-k/top-p are tight.
+    const NGRAM = 3;
+    if(generatedIds.length >= NGRAM - 1){
+      const prefix = generatedIds.slice(-(NGRAM-1)).join(',');
+      const banned = new Set();
+      for(let i=0; i+NGRAM<=generatedIds.length; i++){
+        const key = generatedIds.slice(i, i+NGRAM-1).join(',');
+        if(key === prefix) banned.add(generatedIds[i+NGRAM-1]);
+      }
+      for(const id of banned){
+        if(id>=0 && id<vocabSize) logits[id] = -Infinity;
+      }
+    }
+
+    if(params.temperature <= 0){
+      let bestI=0, bestV=-Infinity;
+      for(let i=0;i<vocabSize;i++) if(logits[i]>bestV){ bestV=logits[i]; bestI=i; }
+      return { id: bestI, topList: [{id:bestI, p:1}] };
+    }
+
+    for(let i=0;i<vocabSize;i++) logits[i] /= params.temperature;
+    let probs = softmax(logits);
+
+    let indices = Array.from(probs.keys());
+    if(params.topK && params.topK > 0 && params.topK < vocabSize){
+      indices.sort((a,b)=>probs[b]-probs[a]);
+      indices = indices.slice(0, params.topK);
+    } else {
+      indices.sort((a,b)=>probs[b]-probs[a]);
+    }
+
+    if(params.topP && params.topP < 1){
+      let cum=0, cutoff=indices.length;
+      for(let i=0;i<indices.length;i++){
+        cum += probs[indices[i]];
+        if(cum >= params.topP){ cutoff = i+1; break; }
+      }
+      indices = indices.slice(0, Math.max(1,cutoff));
+    }
+
+    let renormSum=0;
+    for(const idx of indices) renormSum += probs[idx];
+    const r = Math.random() * renormSum;
+    let acc=0, chosen=indices[0];
+    for(const idx of indices){
+      acc += probs[idx];
+      if(r <= acc){ chosen = idx; break; }
+    }
+
+    const topList = indices.slice(0,5).map(idx=>({id:idx, p:probs[idx]}));
+    return { id: chosen, topList };
+  }
+
+  // ================= Pulse strip =================
+  const pulseStrip = document.getElementById('pulse-strip');
+  function clearPulse(){ pulseStrip.innerHTML=''; }
+  function pushPulse(topList, tokenizerForDecode){
+    const top = topList[0];
+    const bar = document.createElement('div');
+    bar.className = 'pulse-bar';
+    const h = Math.max(3, Math.round(top.p*32));
+    bar.style.height = h+'px';
+    bar.style.background = top.p>0.6 ? 'var(--good)' : top.p>0.3 ? 'var(--accent)' : 'var(--accent-dim)';
+    const tip = document.createElement('div');
+    tip.className = 'pulse-tip';
+    topList.forEach((c,i)=>{
+      const row = document.createElement('div');
+      row.className = 't-row' + (i===0?' top':'');
+      const label = tokenizerForDecode ? tokenizerForDecode.decode([c.id]) : c.id;
+      row.innerHTML = `<span>${escapeHtml(JSON.stringify(label).slice(0,14))}</span><span>${(c.p*100).toFixed(1)}%</span>`;
+      tip.appendChild(row);
+    });
+    bar.appendChild(tip);
+    pulseStrip.appendChild(bar);
+    pulseStrip.scrollLeft = pulseStrip.scrollWidth;
+  }
+
+  function escapeHtml(s){
+    return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  }
+
+  // ================= Router =================
+  const VOCAB_PATTERNS = [
+    /\bdefine\b/i, /\bdefinition\b/i, /\bsynonym/i, /\bantonym/i,
+    /\bopposite of\b/i, /\bmean(s|ing)?\b/i, /\bpart of speech\b/i,
+    /\bfill in the blank\b/i, /\buse .* in a sentence\b/i, /\bwhat does\b.*\bmean\b/i,
+  ];
+  const DIALOGUE_PATTERNS = [
+    /\bhi\b/i, /\bhello\b/i, /\bhey\b/i, /good (morning|evening|afternoon|night)/i,
+    /how are you/i, /\bthanks?\b/i, /thank you/i, /\bbye\b/i, /goodbye/i, /see you/i,
+    /\bsorry\b/i, /what can you do/i, /who are you/i, /your name/i,
+  ];
+  function classifyIntent(text){
+    for(const re of VOCAB_PATTERNS) if(re.test(text)) return 'vocab';
+    for(const re of DIALOGUE_PATTERNS) if(re.test(text)) return 'dialogue';
+    return null;
+  }
+  function routeMessage(text){
+    const mode = document.getElementById('cfg-router-mode').value;
+    if(mode === 'force-vocab') return 'vocab';
+    if(mode === 'force-dialogue') return 'dialogue';
+    const guess = classifyIntent(text);
+    if(guess) return guess;
+    return document.getElementById('cfg-router-default').value;
+  }
+
+  // ================= Chat rendering =================
+  const chatScroll = document.getElementById('chat-scroll');
+
+  function renderMessage(role, content, tag){
+    const wrap = document.createElement('div');
+    wrap.className = 'msg ' + role;
+    const roleEl = document.createElement('div');
+    roleEl.className = 'role';
+    const roleText = document.createElement('span');
+    roleText.textContent = role === 'user' ? 'you' : 'agent';
+    roleEl.appendChild(roleText);
+    if(tag){
+      const tagEl = document.createElement('span');
+      tagEl.className = 'route-tag';
+      tagEl.textContent = tag;
+      roleEl.appendChild(tagEl);
+    }
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    bubble.textContent = content;
+    wrap.appendChild(roleEl); wrap.appendChild(bubble);
+    chatScroll.appendChild(wrap);
+    chatScroll.scrollTop = chatScroll.scrollHeight;
+    return bubble;
+  }
+
+  function buildPrompt(agent){
+    const sys = document.getElementById('cfg-system').value.trim();
+    const template = document.getElementById('cfg-template').value;
+    // Keep only the last few turns — training data (vocab Q&A, 2-3 turn
+    // dialogue scripts) never showed the model a long growing conversation,
+    // so feeding it one drifts out of distribution the longer a chat runs.
+    const MAX_TURNS = 3;
+    const recent = agent.history.slice(-MAX_TURNS * 2);
+    const historyText = recent.map(m => (m.role==='user'?'User: ':'Assistant: ') + m.content).join('\n');
+    return template.replace('{system}', sys).replace('{history}', historyText);
+  }
+
+  // ================= Generation loop =================
+  let generating = false;
+  let stopRequested = false;
+
+  const composerInput = document.getElementById('composer-input');
+  const sendBtn = document.getElementById('send-btn');
+  const stopBtn = document.getElementById('stop-btn');
+
+  composerInput.addEventListener('input', ()=>{
+    composerInput.style.height = 'auto';
+    composerInput.style.height = Math.min(160, composerInput.scrollHeight)+'px';
+  });
+  composerInput.addEventListener('keydown', (e)=>{
+    if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); sendMessage(); }
+  });
+  sendBtn.addEventListener('click', sendMessage);
+  stopBtn.addEventListener('click', ()=>{ stopRequested = true; });
+
+  async function sendMessage(){
+    if(generating) return;
+    const text = composerInput.value.trim();
+    if(!text) return;
+    composerInput.value=''; composerInput.style.height='auto';
+
+    const agentKey = routeMessage(text);
+    const agent = agents[agentKey];
+
+    renderMessage('user', text);
+
+    if(!agent.ready){
+      renderMessage('assistant', `The ${agent.displayName} isn't loaded yet — load its model in the sidebar first.`, `→ ${agent.displayName}`)
+        .classList.add('notice');
+      return;
+    }
+
+    agent.history.push({role:'user', content:text});
+    const bubble = renderMessage('assistant', '', `→ ${agent.displayName}`);
+    bubble.classList.add('streaming');
+    clearPulse();
+
+    generating = true; stopRequested = false;
+    sendBtn.style.display='none'; stopBtn.style.display='inline-block';
+    setPill(agentKey, 'busy', agentKey+': generating…');
+
+    try{
+      const reply = await generate(agent, bubble);
+      agent.history.push({role:'assistant', content:reply});
+    }catch(err){
+      const detail = errorDetail(err);
+      log(`[${agentKey}] Generation error: `+detail, true);
+      bubble.textContent += '\n[error: '+detail+']';
+      setPill(agentKey, 'error', agentKey+': generation failed');
+    }finally{
+      bubble.classList.remove('streaming');
+      generating = false;
+      sendBtn.style.display='inline-flex'; stopBtn.style.display='none';
+      if(agents[agentKey].ready) setPill(agentKey, 'ready', agentKey+': ready');
+    }
+  }
+
+  async function generate(agent, bubble){
+    const agentKey = agent.key;
+    const inputName = el(agentKey,'cfg-input-name').value.trim();
+    const outputName = el(agentKey,'cfg-output-name').value.trim();
+    const dtype = el(agentKey,'cfg-dtype').value;
+    const ctxLen = parseInt(el(agentKey,'cfg-ctx').value,10) || 128;
+    const useAttnMask = el(agentKey,'cfg-attnmask').checked;
+    const bosVal = el(agentKey,'cfg-bos').value;
+    const eosVal = el(agentKey,'cfg-eos').value;
+    const eosId = eosVal!=='' ? parseInt(eosVal,10) : null;
+    const bosId = bosVal!=='' ? parseInt(bosVal,10) : null;
+
+    const params = {
+      temperature: parseFloat(document.getElementById('cfg-temp').value),
+      topK: parseInt(document.getElementById('cfg-topk').value,10),
+      topP: parseFloat(document.getElementById('cfg-topp').value),
+      repPenalty: parseFloat(document.getElementById('cfg-reppen').value),
+    };
+    const maxNew = parseInt(document.getElementById('cfg-maxtok').value,10);
+
+    const prompt = buildPrompt(agent);
+    let ids = agent.tokenizer.encode(prompt);
+    if(bosId!==null) ids = [bosId, ...ids];
+    if(ids.length > ctxLen) ids = ids.slice(ids.length - ctxLen);
+
+    let outText = '';
+
+    for(let step=0; step<maxNew; step++){
+      if(stopRequested){ log(`[${agentKey}] Stopped by user.`); break; }
+      if(ids.length > ctxLen) ids = ids.slice(ids.length - ctxLen);
+
+      const seqLen = ids.length;
+      const dataCtor = dtype==='int64' ? BigInt64Array : Int32Array;
+      const idsData = new dataCtor(seqLen);
+      for(let i=0;i<seqLen;i++) idsData[i] = dtype==='int64' ? BigInt(ids[i]) : ids[i];
+      const inputTensor = new ort.Tensor(dtype, idsData, [1, seqLen]);
+
+      const feeds = {};
+      feeds[inputName] = inputTensor;
+      if(useAttnMask){
+        const maskData = new dataCtor(seqLen);
+        for(let i=0;i<seqLen;i++) maskData[i] = dtype==='int64' ? 1n : 1;
+        feeds['attention_mask'] = new ort.Tensor(dtype, maskData, [1, seqLen]);
+      }
+
+      const results = await agent.session.run(feeds);
+      const outTensor = results[outputName];
+      if(!outTensor) throw new Error(`Output "${outputName}" not found. Available: ${Object.keys(results).join(', ')}`);
+
+      const dims = outTensor.dims;
+      const vocabSize = dims[dims.length-1];
+      const flat = outTensor.data;
+      let lastLogits;
+      if(dims.length===3){
+        const seq = dims[1];
+        const offset = (seq-1)*vocabSize;
+        lastLogits = flat.slice(offset, offset+vocabSize);
+      } else {
+        lastLogits = flat.slice(0, vocabSize);
+      }
+      const lastLogitsArr = Array.from(lastLogits, v=>Number(v));
+
+      const { id: nextId, topList } = sampleNext(lastLogitsArr, ids, params);
+      pushPulse(topList, agent.tokenizer);
+
+      if(eosId!==null && nextId===eosId){ log(`[${agentKey}] EOS reached.`); break; }
+
+      ids.push(nextId);
+      const piece = agent.tokenizer.decode([nextId]);
+      outText += piece;
+      bubble.textContent = outText;
+      chatScroll.scrollTop = chatScroll.scrollHeight;
+
+      await new Promise(r=>setTimeout(r,0));
+    }
+
+    return outText.trim();
+  }
+
+})();
+</script>
+</body>
+</html>
